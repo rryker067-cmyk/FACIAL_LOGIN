@@ -1,7 +1,7 @@
 import json
 from typing import Any
 
-from pydantic import field_validator, Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -44,6 +44,9 @@ class Settings(BaseSettings):
         if isinstance(value, list):
             return [str(item).strip() for item in value if str(item).strip()]
 
+        if isinstance(value, tuple):
+            return [str(item).strip() for item in value if str(item).strip()]
+
         if isinstance(value, str):
             raw = value.strip()
             if not raw:
@@ -57,7 +60,10 @@ class Settings(BaseSettings):
                 except (TypeError, ValueError):
                     pass
 
-            return [item.strip() for item in raw.split(",") if item.strip()]
+            # Soporta valores tipo: "https://a.com, https://b.com"
+            # o bien una sola URL sin comas.
+            items = [item.strip() for item in raw.replace("\n", ",").split(",") if item.strip()]
+            return items or [raw]
 
         return [str(value).strip()]
 

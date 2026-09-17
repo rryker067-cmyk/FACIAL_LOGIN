@@ -32,4 +32,4 @@ COPY . .
 
 EXPOSE 10000
 
-CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "10000", "--workers", "1"]
+CMD ["sh", "-c", "uvicorn backend.app.main:app --host 0.0.0.0 --port ${PORT:-10000} --workers 1"]

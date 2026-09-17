@@ -5,6 +5,16 @@ type UsuarioLocal = {
   role: string;
 };
 
+const leerUsuariosLocales = (): UsuarioLocal[] => {
+  try {
+    const raw = localStorage.getItem("app_local_users");
+    const parsed = raw ? (JSON.parse(raw) as UsuarioLocal[]) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
 // Usuario por defecto inicial
 const USUARIO_DEFECTO: UsuarioLocal = {
   email: "admin@empresa.com",
@@ -15,7 +25,7 @@ const USUARIO_DEFECTO: UsuarioLocal = {
 
 // Función para obtener todos los usuarios (los guardados + el por defecto)
 export const obtenerUsuariosLocales = (): UsuarioLocal[] => {
-  const guardados = JSON.parse(localStorage.getItem("app_local_users") || "[]") as UsuarioLocal[];
+  const guardados = leerUsuariosLocales();
   return [USUARIO_DEFECTO, ...guardados];
 };
 
@@ -25,10 +35,10 @@ export const registrarUsuarioLocal = (
   email: string,
   password: string
 ): { success: boolean; message: string } => {
-  const guardados = JSON.parse(localStorage.getItem("app_local_users") || "[]") as UsuarioLocal[];
+  const guardados = leerUsuariosLocales();
 
   // Verificar si ya existe
-  const existe = guardados.find((u: UsuarioLocal) => u.email.toLowerCase() === email.toLowerCase());
+  const existe = guardados.find((usuario: UsuarioLocal) => usuario.email.toLowerCase() === email.toLowerCase());
   if (existe) {
     return { success: false, message: "Este correo ya está registrado." };
   }
@@ -53,8 +63,8 @@ export const validarLoginLocal = (
 ): { success: boolean; user?: UsuarioLocal; message?: string } => {
   const usuarios = obtenerUsuariosLocales();
   const encontrado = usuarios.find(
-    (u: UsuarioLocal) =>
-      u.email.toLowerCase() === email.trim().toLowerCase() && u.password === password.trim()
+    (usuario: UsuarioLocal) =>
+      usuario.email.toLowerCase() === email.trim().toLowerCase() && usuario.password === password.trim()
   );
 
   if (encontrado) {

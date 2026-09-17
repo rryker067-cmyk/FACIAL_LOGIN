@@ -1,11 +1,11 @@
 services:
   - type: web
     name: reconocimiento-facial-api
-    env: python
+    env: docker
     plan: free
     rootDir: .
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn backend.app.main:app --host 0.0.0.0 --port 10000
+    dockerContext: .
+    dockerfilePath: ./Dockerfile
     envVars:
       - key: SUPABASE_URL
         sync: false

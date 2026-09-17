@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: reconocimiento-facial-api
+    name: face_login-api
     env: docker
     plan: free
     rootDir: .

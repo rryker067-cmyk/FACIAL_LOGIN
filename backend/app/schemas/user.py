@@ -6,6 +6,8 @@ class UserRegisterRequest(BaseModel):
     apellido: str = Field(..., min_length=2)
     edad: int = Field(..., ge=18, le=120)
     telefono: str = Field(..., min_length=8)
+    email: str | None = Field(default=None, description="Correo electrónico opcional del usuario")
+    dni: str | None = Field(default=None, description="Documento de identidad opcional del usuario")
     imagen_base64: str = Field(...)
 
 

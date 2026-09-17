@@ -187,6 +187,8 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
         apellido: registerName.trim().split(' ').slice(1).join(' ') || 'Registrado',
         edad: Number(registerAge.trim() || 30),
         telefono: registerPhone.trim() || '+51 900 000 000',
+        email: registerEmail.trim(),
+        dni: registerDni.trim(),
         imagen_base64: imageToSave,
       });
 

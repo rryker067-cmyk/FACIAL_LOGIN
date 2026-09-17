@@ -35,6 +35,8 @@ export async function registerUserWithFace(data: {
   apellido: string
   edad: number
   telefono: string
+  email?: string
+  dni?: string
   imagen_base64: string
 }): Promise<{ id: string; nombre: string; apellido: string; imagen_url: string }> {
   return requestJson('/api/v1/users/register', data)

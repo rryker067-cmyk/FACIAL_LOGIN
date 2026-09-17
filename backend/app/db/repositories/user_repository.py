@@ -43,6 +43,8 @@ class UserRepository:
                 "apellido": data["apellido"],
                 "edad": data["edad"],
                 "telefono": data["telefono"],
+                "email": data.get("email"),
+                "dni": data.get("dni"),
                 "imagen_url": avatar_url,
                 "face_embedding": embedding,
             }
@@ -75,6 +77,9 @@ class UserRepository:
                     "id": match["id"],
                     "nombre": match["nombre"],
                     "apellido": match["apellido"],
+                    "edad": match.get("edad"),
+                    "dni": match.get("dni"),
+                    "telefono": match.get("telefono"),
                     "similarity": 0.96,
                     "imagen_url": match.get("imagen_url", ""),
                 }

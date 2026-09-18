@@ -256,14 +256,14 @@ export default function Dashboard({ onLogout }: DashboardProps) {
         <div className="content-wrap" id="resumen">
           <div className="page-heading"><div><div className="eyebrow"><span /> OPERACIONES / IDENTIDAD</div><h1>{activeSection === 'resumen' ? 'Resumen operativo' : activeSection === 'personas' ? 'Personas registradas' : activeSection === 'historial' ? 'Historial de validaciones' : activeSection === 'documentacion' ? 'Documentación' : activeSection === 'integraciones' ? 'Integraciones' : activeSection === 'seguridad' ? 'Seguridad' : 'Reconocer un rostro'}</h1><p>{activeSection === 'resumen' ? 'Supervisa el estado de la identidad biométrica y la actividad reciente.' : 'Gestiona la operación de reconocimiento facial desde un solo lugar.'}</p></div><div className="heading-meta"><span className="live-dot" /> {appConfig.usesDemoRecognition ? 'Modo demo' : 'API conectada'} <small>FastAPI · Supabase</small></div></div>
 
-          <section className="dashboard-overview" aria-label="Resumen de métricas">
+          <section className={`dashboard-overview ${activeSection === 'resumen' ? '' : 'dashboard-section-hidden'}`} aria-label="Resumen de métricas">
             <div className="metric-card metric-card--success"><span className="metric-label">Personas registradas</span><strong>{registeredUsers.length}</strong><small><UsersRound size={12} /> perfiles biométricos</small></div>
             <div className="metric-card"><span className="metric-label">Validaciones</span><strong>{validationHistory.length}</strong><small><Activity size={12} /> intentos procesados</small></div>
             <div className="metric-card"><span className="metric-label">Tasa de reconocimiento</span><strong>{recognitionRate}%</strong><small><CheckCircle2 size={12} /> coincidencias exitosas</small></div>
             <div className="metric-card"><span className="metric-label">No reconocidos</span><strong>{failedCount}</strong><small><Clock3 size={12} /> requieren registro</small></div>
           </section>
 
-          <section className="analytics-grid" aria-label="Analítica facial">
+          <section className={`analytics-grid ${activeSection === 'resumen' ? '' : 'dashboard-section-hidden'}`} aria-label="Analítica facial">
             <div className="panel analytics-panel"><div className="panel-heading compact-heading"><div><span className="section-kicker">ACTIVIDAD</span><h2>Validaciones de los últimos 7 días</h2></div><BarChart3 size={19} /></div><div className="bar-chart">{chartValues.map((item) => <div className="bar-column" key={item.label}><span>{item.count}</span><div className="bar-track"><i style={{ height: `${Math.max((item.count / maxChartValue) * 100, item.count ? 12 : 4)}%` }} /></div><small>{item.label}</small></div>)}</div></div>
             <div className="panel analytics-panel"><div className="panel-heading compact-heading"><div><span className="section-kicker">ESTADO</span><h2>Rendimiento del servicio</h2></div><Server size={19} /></div><div className="service-health"><div><span className="health-icon"><CheckCircle2 size={17} /></span><div><b>API de reconocimiento</b><small>{appConfig.usesDemoRecognition ? 'Modo demo activo' : 'Conectada y operativa'}</small></div><strong>100%</strong></div><div><span className="health-icon"><Database size={17} /></span><div><b>Persistencia de usuarios</b><small>{registeredUsers.length ? 'Datos disponibles localmente' : 'Sin perfiles registrados'}</small></div><strong>{registeredUsers.length ? 'OK' : '—'}</strong></div></div></div>
           </section>
@@ -293,7 +293,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
             </div>
           </div>
 
-          <section className="recognition-grid" id="reconocer">
+          <section className={`recognition-grid ${activeSection === 'reconocer' ? '' : 'dashboard-section-hidden'}`} id="reconocer">
             <div className="panel capture-panel"><div className="panel-heading"><div><span className="section-kicker">PASO 01</span><h2>Imagen de identificación</h2></div><span className="secure-badge"><ShieldCheck size={14} /> Privada</span></div>
               <div className={`capture-stage ${preview ? 'capture-stage--preview' : ''} ${isCameraOpen ? 'capture-stage--camera' : ''}`}>
                 {isCameraOpen ? (
@@ -334,7 +334,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
             </div>
           </section>
 
-          <section className="operations-grid">
+          <section className={`operations-grid ${activeSection === 'reconocer' ? '' : 'dashboard-section-hidden'}`}>
             <div className="panel verification-panel">
               <div className="panel-heading compact-heading">
                 <div>
@@ -440,7 +440,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
             </div>
           </section>
 
-          <section className="bottom-grid">
+          <section className={`bottom-grid ${activeSection === 'resumen' ? '' : 'dashboard-section-hidden'}`}>
             <div className="info-band">
               <div className="info-icon"><FileImage size={19} /></div>
               <div><b>Recomendaciones para una mejor coincidencia</b><span>Usa una imagen frontal, con buena iluminación y sin accesorios que cubran el rostro.</span></div>
@@ -452,7 +452,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
             </div>
           </section>
 
-          <section className="history-grid">
+          <section className={`history-grid ${activeSection === 'historial' ? '' : 'dashboard-section-hidden'}`} id="historial">
             <div className="panel history-panel">
               <div className="panel-heading compact-heading">
                 <div>
@@ -499,15 +499,15 @@ export default function Dashboard({ onLogout }: DashboardProps) {
             </div>
           </section>
 
-          <section className="panel dashboard-section" id="personas">
+          <section className={`panel dashboard-section ${activeSection === 'personas' ? '' : 'dashboard-section-hidden'}`} id="personas">
             <div className="panel-heading compact-heading"><div><span className="section-kicker">DIRECTORIO</span><h2>Personas registradas</h2></div><span className="status-pill">{registeredUsers.length} perfiles</span></div>
             {registeredUsers.length ? <div className="people-grid">{registeredUsers.map((user, index) => <div className="person-card" key={user.id || `${user.dni}-${index}`}><div className="review-avatar">{`${user.nombre?.[0] || ''}${user.apellido?.[0] || ''}`.toUpperCase()}</div><div><b>{user.nombre} {user.apellido}</b><span>{user.dni || 'Sin DNI'} · {user.email || 'Sin correo'}</span></div><CheckCircle2 size={17} /></div>)}</div> : <div className="empty-state">Todavía no hay personas registradas. Usa “Reconocer rostro” para crear el primer perfil.</div>}
           </section>
 
-          <section className="dashboard-info-grid">
-            <div className="panel dashboard-section" id="documentacion"><div className="panel-heading compact-heading"><div><span className="section-kicker">GUÍA</span><h2>Documentación</h2></div><BookOpen size={19} /></div><div className="info-cards"><div><b>1. Captura una imagen</b><span>Usa una foto frontal, nítida y con buena iluminación.</span></div><div><b>2. Verifica los datos</b><span>El sistema consulta la coincidencia facial y completa el formulario.</span></div><div><b>3. Guarda el registro</b><span>Los perfiles quedan disponibles para futuras validaciones.</span></div></div></div>
-            <div className="panel dashboard-section" id="integraciones"><div className="panel-heading compact-heading"><div><span className="section-kicker">SERVICIOS</span><h2>Integraciones</h2></div><ExternalLink size={19} /></div><div className="integration-list"><div><Database size={17} /><span><b>Supabase</b><small>Persistencia de usuarios y embeddings</small></span><em>{appConfig.usesDemoRecognition ? 'Configurar' : 'Conectado'}</em></div><div><Server size={17} /><span><b>FastAPI</b><small>API de reconocimiento facial</small></span><em>{appConfig.usesDemoRecognition ? 'Demo' : 'Operativo'}</em></div></div></div>
-            <div className="panel dashboard-section" id="seguridad"><div className="panel-heading compact-heading"><div><span className="section-kicker">CONTROL</span><h2>Seguridad</h2></div><ShieldCheck size={19} /></div><div className="security-summary"><CheckCircle2 size={18} /><span>Las imágenes se procesan con confirmación explícita y el acceso se registra en el historial.</span></div><div className="security-summary"><ShieldCheck size={18} /><span>Sesión protegida con autenticación facial y token de acceso.</span></div></div>
+          <section className={`dashboard-info-grid ${activeSection !== 'documentacion' && activeSection !== 'integraciones' && activeSection !== 'seguridad' ? 'dashboard-section-hidden' : ''}`}>
+            <div className={`panel dashboard-section ${activeSection === 'documentacion' ? '' : 'dashboard-section-hidden'}`} id="documentacion"><div className="panel-heading compact-heading"><div><span className="section-kicker">GUÍA</span><h2>Documentación</h2></div><BookOpen size={19} /></div><div className="info-cards"><div><b>1. Captura una imagen</b><span>Usa una foto frontal, nítida y con buena iluminación.</span></div><div><b>2. Verifica los datos</b><span>El sistema consulta la coincidencia facial y completa el formulario.</span></div><div><b>3. Guarda el registro</b><span>Los perfiles quedan disponibles para futuras validaciones.</span></div></div></div>
+            <div className={`panel dashboard-section ${activeSection === 'integraciones' ? '' : 'dashboard-section-hidden'}`} id="integraciones"><div className="panel-heading compact-heading"><div><span className="section-kicker">SERVICIOS</span><h2>Integraciones</h2></div><ExternalLink size={19} /></div><div className="integration-list"><div><Database size={17} /><span><b>Supabase</b><small>Persistencia de usuarios y embeddings</small></span><em>{appConfig.usesDemoRecognition ? 'Configurar' : 'Conectado'}</em></div><div><Server size={17} /><span><b>FastAPI</b><small>API de reconocimiento facial</small></span><em>{appConfig.usesDemoRecognition ? 'Demo' : 'Operativo'}</em></div></div></div>
+            <div className={`panel dashboard-section ${activeSection === 'seguridad' ? '' : 'dashboard-section-hidden'}`} id="seguridad"><div className="panel-heading compact-heading"><div><span className="section-kicker">CONTROL</span><h2>Seguridad</h2></div><ShieldCheck size={19} /></div><div className="security-summary"><CheckCircle2 size={18} /><span>Las imágenes se procesan con confirmación explícita y el acceso se registra en el historial.</span></div><div className="security-summary"><ShieldCheck size={18} /><span>Sesión protegida con autenticación facial y token de acceso.</span></div></div>
           </section>
         </div>
       </main>

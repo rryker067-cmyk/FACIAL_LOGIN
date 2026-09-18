@@ -260,6 +260,7 @@ button { border: 0; }
 .metric-card--success strong { color: #236d4a; }
 
 .dashboard-overview { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 20px; }
+.dashboard-section-hidden { display: none !important; }
 .dashboard-overview .metric-card small { display: flex; align-items: center; gap: 5px; }
 .analytics-grid { display: grid; grid-template-columns: 1.2fr .8fr; gap: 14px; margin-bottom: 20px; }
 .analytics-panel { min-height: 245px; }
@@ -279,6 +280,7 @@ button { border: 0; }
 .person-card > div:nth-child(2), .integration-list span { flex: 1; display: grid; gap: 4px; }
 .person-card > svg { color: #2c9363; }
 .dashboard-info-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.dashboard-info-grid:not(.dashboard-section-hidden) .dashboard-section:not(.dashboard-section-hidden) { grid-column: 1 / -1; margin-top: 0; }
 .info-cards, .integration-list { display: grid; gap: 11px; }
 .info-cards > div { display: grid; gap: 4px; padding: 10px 0; border-bottom: 1px solid #edf2ef; }
 .info-cards > div:last-child { border-bottom: 0; }

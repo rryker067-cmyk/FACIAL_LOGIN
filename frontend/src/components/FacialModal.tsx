@@ -40,14 +40,8 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
       return;
     }
 
-    setFaceMatch(8);
-    setRegistrationConfidence(72);
-    const animation = window.setInterval(() => {
-      setFaceMatch((value) => mode === 'login' ? (value >= 82 ? 48 : value + 6) : 88);
-      setRegistrationConfidence((value) => value >= 96 ? 91 : value + 3);
-    }, 320);
-
-    return () => window.clearInterval(animation);
+    setFaceMatch(0);
+    setRegistrationConfidence(0);
   }, [cameraActive, mode]);
 
   useEffect(() => {
@@ -129,9 +123,15 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
         setCapturedImage(snapshotUrl);
 
         const result = await loginWithFace(snapshotUrl);
-        localStorage.setItem('veris_access_token', result.access_token);
         const matchedName = result.nombre || 'Usuario identificado';
         const parsedMatch = Number.parseFloat(result.match_percentage) || 0;
+        if (parsedMatch < 75) {
+          throw Object.assign(new Error('Acceso denegado: se requiere una coincidencia facial mínima del 75%.'), {
+            code: 'FACE_MATCH_BELOW_REQUIRED',
+            status: 401,
+          });
+        }
+        localStorage.setItem('veris_access_token', result.access_token);
         setFaceMatch(Math.min(100, Math.round(parsedMatch)));
         setRegistrationConfidence(Math.min(100, Math.max(80, Math.round(parsedMatch + 4))));
         setRegisterName(matchedName.split(' ')[0] || matchedName);

@@ -23,9 +23,9 @@ la URL y la clave anónima de tu proyecto Supabase, y crea los usuarios desde
 Supabase Auth.
 
 El inicio de sesión facial calcula el embedding en el backend y consulta la
-función RPC `match_face_1n` sobre la tabla `usuarios`. La métrica mostrada en la
-interfaz es informativa: el acceso solo se concede cuando Supabase devuelve una
-coincidencia que supera el umbral configurado.
+función RPC `match_face_1n` sobre la tabla `usuarios`. El acceso solo se concede
+cuando Supabase devuelve una coincidencia mínima del 75%; cualquier valor
+inferior se rechaza.
 
 ## Próximos módulos
 

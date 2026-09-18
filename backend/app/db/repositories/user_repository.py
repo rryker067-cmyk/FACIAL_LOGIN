@@ -67,7 +67,7 @@ class UserRepository:
             )
 
     @staticmethod
-    async def find_best_face_match(query_embedding: list[float], threshold: float = 0.70) -> dict | None:
+    async def find_best_face_match(query_embedding: list[float], threshold: float = 0.75) -> dict | None:
         """
         Aprovecha pgvector mediante una llamada RPC en Supabase.
         Búsqueda vectorial en C sin consumo de memoria en Python.
@@ -78,6 +78,9 @@ class UserRepository:
                     return None
 
                 match = _MEMORY_USERS[-1]
+                similarity = 0.96
+                if similarity < threshold:
+                    return None
                 return {
                     "id": match["id"],
                     "nombre": match["nombre"],
@@ -85,7 +88,7 @@ class UserRepository:
                     "edad": match.get("edad"),
                     "dni": match.get("dni"),
                     "telefono": match.get("telefono"),
-                    "similarity": 0.96,
+                    "similarity": similarity,
                     "imagen_url": match.get("imagen_url", ""),
                 }
 
@@ -98,7 +101,11 @@ class UserRepository:
             ).execute()
 
             if response.data and len(response.data) > 0:
-                return response.data[0]
+                candidate = response.data[0]
+                similarity = float(candidate.get("similarity", 0))
+                if similarity < threshold:
+                    return None
+                return candidate
             return None
         except Exception as err:
             raise HTTPException(

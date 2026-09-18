@@ -22,9 +22,10 @@ async def recognize_face(payload: FaceRecognitionRequest):
 
         cv2_img = await run_in_threadpool(LightweightLiveness.verify_quality_and_liveness, image)
         embedding = await run_in_threadpool(face_embedder.extract_embedding, cv2_img)
-        match = await UserRepository.find_best_face_match(embedding, threshold=0.60)
+        match = await UserRepository.find_best_face_match(embedding, threshold=0.75)
 
-        if not match:
+        similarity = float(match.get("similarity", 0)) if match else 0
+        if not match or similarity < 0.75:
             return {
                 "nombre": "",
                 "apellido": "",
@@ -40,7 +41,7 @@ async def recognize_face(payload: FaceRecognitionRequest):
             "edad": match.get("edad", ""),
             "dni": match.get("dni", ""),
             "telefono": match.get("telefono", ""),
-            "similarity": match.get("similarity", 0.95),
+            "similarity": similarity,
         }
     except HTTPException:
         raise

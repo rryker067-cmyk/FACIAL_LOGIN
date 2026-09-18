@@ -31,7 +31,10 @@ async function requestJson<T>(endpoint: string, body: Record<string, unknown>): 
 
 export async function recognizeFace(image: string): Promise<PersonRecord> {
   const result = await requestJson<Record<string, string | number>>('/api/v1/face-recognition/recognize', { image })
-  return { ...emptyPerson, ...Object.fromEntries(Object.entries(result).map(([key, value]) => [key, String(value)])) }
+  return {
+    ...emptyPerson,
+    ...Object.fromEntries(Object.entries(result).map(([key, value]) => [key, String(value)])),
+  }
 }
 
 export async function loginWithFace(image: string): Promise<{ access_token: string; user_id: string; nombre: string; match_percentage: string }> {

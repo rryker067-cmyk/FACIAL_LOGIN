@@ -4,6 +4,7 @@ export type PersonRecord = {
   edad: string
   dni: string
   telefono: string
+  similarity?: string
 }
 
 export const emptyPerson: PersonRecord = {
@@ -12,4 +13,5 @@ export const emptyPerson: PersonRecord = {
   edad: '',
   dni: '',
   telefono: '',
+  similarity: '0',
 }

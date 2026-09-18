@@ -70,7 +70,7 @@ async def login_face_1n(payload: LoginFaceRequest):
     # 3. Búsqueda vectorial 1:N en Supabase / PostgreSQL pgvector (I/O Async)
     match = await UserRepository.find_best_face_match(
         query_embedding=incoming_embedding, 
-        threshold=0.70
+        threshold=0.75
     )
 
     if not match:
@@ -78,7 +78,7 @@ async def login_face_1n(payload: LoginFaceRequest):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={
                 "error": "FACE_NOT_RECOGNIZED",
-                "message": "Acceso Denegado: No existe coincidencia de rostro registrada superior al 70%."
+                "message": "Acceso Denegado: se requiere una coincidencia facial mínima del 75%."
             }
         )
 

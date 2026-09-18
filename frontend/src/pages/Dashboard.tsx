@@ -87,20 +87,14 @@ export default function Dashboard({ onLogout }: DashboardProps) {
 
   useEffect(() => {
     if (!isCameraOpen) {
-      setFaceMatch(preview ? 18 : 0)
-      setRegistrationConfidence(preview ? 78 : 0)
+      setFaceMatch(0)
+      setRegistrationConfidence(0)
       return
     }
 
-    setFaceMatch(8)
-    setRegistrationConfidence(72)
-    const animation = window.setInterval(() => {
-      setFaceMatch((value) => value >= 86 ? 52 : value + 7)
-      setRegistrationConfidence((value) => value >= 96 ? 90 : value + 3)
-    }, 320)
-
-    return () => window.clearInterval(animation)
-  }, [isCameraOpen, preview])
+    setFaceMatch(0)
+    setRegistrationConfidence(0)
+  }, [isCameraOpen])
 
   const saveValidation = (entry: Validation) => {
     const next = [entry, ...validationHistory].slice(0, 50)
@@ -122,8 +116,20 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   const handleFile = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
-    setPreview(URL.createObjectURL(file))
-    setIsSaved(false)
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') {
+        setRecognitionError('No se pudo leer la imagen seleccionada.')
+        return
+      }
+      setPreview(reader.result)
+      setRecognitionError(null)
+      setIsSaved(false)
+    }
+    reader.onerror = () => {
+      setRecognitionError('No se pudo leer la imagen seleccionada.')
+    }
+    reader.readAsDataURL(file)
   }
 
   const openCamera = async () => {
@@ -163,14 +169,15 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     try {
       const result = await recognizeFace(preview)
       setForm(result)
-      const match = result.nombre ? 95 : 0
-      setFaceMatch(match)
-      setRegistrationConfidence(result.nombre ? 96 : 82)
+      const match = Math.min(100, Math.max(0, Number.parseFloat(result.similarity || '0') * 100))
+      const isAcceptedMatch = Boolean(result.nombre) && match >= 75
+      setFaceMatch(isAcceptedMatch ? match : 0)
+      setRegistrationConfidence(isAcceptedMatch ? Math.round(match) : 0)
       saveValidation({
-        name: result.nombre ? `${result.nombre} ${result.apellido}` : 'Rostro no reconocido',
+        name: isAcceptedMatch ? `${result.nombre} ${result.apellido}` : 'Rostro no reconocido',
         time: new Date().toISOString(),
-        match: `${match}%`,
-        status: result.nombre ? 'success' : 'failed',
+        match: `${isAcceptedMatch ? Math.round(match) : 0}%`,
+        status: isAcceptedMatch ? 'success' : 'failed',
       })
     } catch {
       setRecognitionError('No se pudo conectar con el servicio de reconocimiento. Revisa FastAPI e inténtalo de nuevo.')

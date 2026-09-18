@@ -167,8 +167,13 @@ export default function Dashboard({ onLogout }: DashboardProps) {
         return
       }
       setPreview(reader.result)
+      setForm(emptyPerson)
+      setFaceMatch(0)
+      setRegistrationConfidence(0)
       setRecognitionError(null)
+      setRecognitionNotice(null)
       setIsSaved(false)
+      void recognizeFaceFromImage(reader.result)
     }
     reader.onerror = () => {
       setRecognitionError('No se pudo leer la imagen seleccionada.')

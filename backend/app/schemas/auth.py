@@ -23,3 +23,7 @@ class TokenResponse(BaseModel):
     user_id: str
     nombre: str
     match_percentage: str
+    email: str | None = None
+    dni: str | None = None
+    edad: int | None = None
+    telefono: str | None = None

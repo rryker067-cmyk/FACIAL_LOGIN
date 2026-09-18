@@ -94,5 +94,9 @@ async def login_face_1n(payload: LoginFaceRequest):
         access_token=token,
         user_id=str(match["id"]),
         nombre=f"{match['nombre']} {match['apellido']}",
-        match_percentage=f"{similarity_pct}%"
+        match_percentage=f"{similarity_pct}%",
+        email=match.get("email"),
+        dni=match.get("dni"),
+        edad=match.get("edad"),
+        telefono=match.get("telefono"),
     )

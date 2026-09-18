@@ -145,16 +145,20 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
         localStorage.setItem('veris_access_token', result.access_token);
         setFaceMatch(Math.min(100, Math.round(parsedMatch)));
         setRegistrationConfidence(Math.min(100, Math.max(80, Math.round(parsedMatch + 4))));
-        setRegisterName(matchedName.split(' ')[0] || matchedName);
+        setRegisterName(matchedName);
+        setRegisterEmail(result.email || '');
+        setRegisterDni(result.dni || '');
+        setRegisterAge(result.edad ? String(result.edad) : '');
+        setRegisterPhone(result.telefono || '');
         setMatchedUser({ name: matchedName, role: 'Operador Biométrico' });
 
         setStatus('success');
-        setMessage(`¡Coincidencia detectada en tiempo real! ${result.match_percentage}`);
+        setMessage(`¡Coincidencia detectada! Mostrando credenciales durante 5 segundos... ${result.match_percentage}`);
 
         setTimeout(() => {
           stopCamera();
           onSuccess({ name: matchedName, role: 'Operador Biométrico' });
-        }, 2000);
+        }, 5000);
       } catch (error: any) {
         if (error?.code === 'FACE_NOT_RECOGNIZED' || error?.status === 401) {
           setScanning(false);

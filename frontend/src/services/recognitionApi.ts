@@ -37,7 +37,16 @@ export async function recognizeFace(image: string): Promise<PersonRecord> {
   }
 }
 
-export async function loginWithFace(image: string): Promise<{ access_token: string; user_id: string; nombre: string; match_percentage: string }> {
+export async function loginWithFace(image: string): Promise<{
+  access_token: string
+  user_id: string
+  nombre: string
+  match_percentage: string
+  email?: string | null
+  dni?: string | null
+  edad?: number | null
+  telefono?: string | null
+}> {
   return requestJson('/api/v1/auth/login-face', { imagen_base64: image })
 }
 

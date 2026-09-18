@@ -147,6 +147,7 @@ class UserRepository:
                     "edad": match.get("edad"),
                     "dni": match.get("dni"),
                     "telefono": match.get("telefono"),
+                    "email": match.get("email"),
                     "similarity": similarity,
                     "imagen_url": match.get("imagen_url", ""),
                 }

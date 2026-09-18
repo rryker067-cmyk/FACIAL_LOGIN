@@ -327,38 +327,54 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
               </div>
             </div>
 
-            {/* Cuadro de la cámara o imagen congelada */}
-            <div className="facial-camera-container-box">
-              {capturedImage && mode === 'register' ? (
-                <img src={capturedImage} alt="Captura Rostro" className="facial-video-feed" />
-              ) : cameraActive ? (
-                <>
-                  <video 
-                    ref={videoRef} 
-                    autoPlay 
-                    playsInline 
-                    muted 
-                    className="facial-video-feed" 
-                  />
-                  <div className={`facial-scan-overlay ${scanning ? 'active' : ''}`}>
-                    <div className="scan-corner top-left"></div>
-                    <div className="scan-corner top-right"></div>
-                    <div className="scan-corner bottom-left"></div>
-                    <div className="scan-corner bottom-right"></div>
-                    {scanning && <div className="scan-laser-line"></div>}
+            {/* La cámara permanece activa; la captura se revisa en el panel lateral */}
+            <div className={`facial-capture-stage ${capturedImage && mode === 'register' ? 'has-preview' : ''}`}>
+              <div className="facial-camera-container-box">
+                {cameraActive ? (
+                  <>
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className="facial-video-feed"
+                    />
+                    <div className={`facial-scan-overlay ${scanning ? 'active' : ''}`}>
+                      <div className="scan-corner top-left"></div>
+                      <div className="scan-corner top-right"></div>
+                      <div className="scan-corner bottom-left"></div>
+                      <div className="scan-corner bottom-right"></div>
+                      {scanning && <div className="scan-laser-line"></div>}
+                    </div>
+                  </>
+                ) : (
+                  <div className="camera-offline-state">
+                    <CameraOff size={32} className="text-gray-500" />
+                    <span>Cámara apagada</span>
                   </div>
-                </>
-              ) : (
-                <div className="camera-offline-state">
-                  <CameraOff size={32} className="text-gray-500" />
-                  <span>Cámara apagada</span>
-                </div>
-              )}
+                )}
 
-              {status === 'error' && (
-                <div className="facial-status-banner error">
-                  <AlertCircle size={16} />
-                  <span>{message}</span>
+                {status === 'error' && (
+                  <div className="facial-status-banner error">
+                    <AlertCircle size={16} />
+                    <span>{message}</span>
+                  </div>
+                )}
+              </div>
+
+              {capturedImage && mode === 'register' && (
+                <div className="facial-capture-preview">
+                  <span className="facial-preview-label">Vista previa</span>
+                  <img src={capturedImage} alt="Vista previa de la captura" />
+                  <span className="facial-preview-status">Foto seleccionada</span>
+                  <div className="facial-preview-actions">
+                    <button type="button" onClick={() => { setStatus('success'); setMessage('Foto confirmada. Puede guardar el registro.'); }} className="facial-use-btn">
+                      <CheckCircle size={14} /> Usar esta foto
+                    </button>
+                    <button type="button" onClick={() => setCapturedImage(null)} className="facial-retake-btn">
+                      <Camera size={14} /> Tomar otra
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -386,14 +402,14 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
               </div>
             </div>
 
-            {/* Botón de Capturar Debajo del Cuadro (Solo en Registro) */}
+            {/* La captura no detiene la cámara: se confirma desde la vista previa */}
             {mode === 'register' && (
               <button 
                 type="button" 
                 onClick={handleCaptureRegistration}
                 className="facial-capture-btn-under"
               >
-                <Camera size={16} /> Tomar fotografía
+                <Camera size={16} /> {capturedImage ? 'Tomar otra fotografía' : 'Tomar fotografía'}
               </button>
             )}
             

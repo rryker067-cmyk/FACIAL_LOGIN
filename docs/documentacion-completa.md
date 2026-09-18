@@ -207,14 +207,42 @@ también debe existir la tabla de eventos de reconocimiento:
 create table public.recognition_events (
     id uuid primary key default gen_random_uuid(),
     user_id uuid references public.usuarios(id) on delete set null,
-    similarity numeric(6,5) not null default 0,
-    recognized boolean not null,
-    source varchar(30) not null default 'dashboard',
+    event_type varchar(40) not null default 'face_login',
+    similarity numeric(6,5),
+    recognized boolean not null default false,
+    success boolean not null default false,
+    source varchar(60) not null default 'dashboard',
+    message text,
+    error_code varchar(80),
+    metadata jsonb,
     created_at timestamptz not null default now()
 );
 
 create index recognition_events_created_at_idx
     on public.recognition_events (created_at desc);
+
+-- Para instalaciones existentes:
+alter table public.recognition_events
+    alter column similarity drop not null,
+    add column if not exists event_type varchar(40) not null default 'face_login',
+    add column if not exists success boolean not null default false,
+    add column if not exists message text,
+    add column if not exists error_code varchar(80),
+    add column if not exists metadata jsonb;
+
+create or replace function public.match_face_for_user(
+    query_embedding vector(512),
+    match_threshold float,
+    target_user_id uuid
+)
+returns table (id uuid, similarity float)
+language sql stable
+as $$
+    select u.id, (1 - (u.face_embedding <=> query_embedding))::float
+    from public.usuarios u
+    where u.id = target_user_id
+      and 1 - (u.face_embedding <=> query_embedding) >= match_threshold;
+$$;
 ```
 
 El backend registra los intentos reconocidos y no reconocidos desde los
@@ -452,9 +480,20 @@ similitud `0`; el frontend muestra una alerta amarilla.
 ### Usuarios
 
 ```http
-GET  /api/v1/users
-POST /api/v1/users/register
+GET    /api/v1/users
+POST   /api/v1/users/register
+PATCH  /api/v1/users/{user_id}
+DELETE /api/v1/users/{user_id}
+POST   /api/v1/users/{user_id}/verify-face
+GET    /api/v1/auth/history
 ```
+
+`PATCH` y `DELETE` requieren un `Authorization: Bearer ...` válido del usuario
+objetivo y el header `X-Face-Verification-Token` obtenido en
+`verify-face`. La confirmación facial es de un solo propósito, está firmada y
+expira en cinco minutos. `auth/history` devuelve únicamente los
+intentos del usuario autenticado, incluyendo logins faciales fallidos y
+credenciales rechazadas; nunca almacena contraseñas ni imágenes.
 
 Registro:
 
@@ -747,7 +786,7 @@ desde el dashboard con un usuario real.
 
 ## 23. Limitaciones conocidas
 
-- El historial del dashboard aún no es centralizado en Supabase.
+- El historial del dashboard se centraliza en `recognition_events` de Supabase.
 - El detector Haar puede no detectar todos los rostros en condiciones difíciles.
 - La validación de liveness actual es básica y no equivale a una certificación
   anti-spoofing.

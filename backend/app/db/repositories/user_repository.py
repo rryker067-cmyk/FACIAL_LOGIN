@@ -61,10 +61,106 @@ class UserRepository:
                 "user_id": user_id,
                 "similarity": round(max(0, min(1, similarity)), 5),
                 "recognized": recognized,
+                "event_type": "face_login",
+                "success": recognized,
                 "source": source,
+                "message": None if recognized else "Rostro no reconocido.",
+                "error_code": None if recognized else "FACE_NOT_RECOGNIZED",
             }).execute()
         except Exception:
             logger.exception("No se pudo persistir el evento de reconocimiento facial")
+
+    @staticmethod
+    async def record_auth_event(
+        *,
+        event_type: str,
+        user_id: str | None,
+        success: bool,
+        source: str,
+        similarity: float | None = None,
+        message: str | None = None,
+        error_code: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """Stores every authentication attempt, including failures."""
+        if supabase is None:
+            logger.warning("No se registró el evento de auditoría: Supabase no está configurado.")
+            return
+        try:
+            payload = {
+                "event_type": event_type,
+                "user_id": user_id,
+                "similarity": (
+                    round(max(0, min(1, similarity)), 5)
+                    if similarity is not None else None
+                ),
+                "recognized": success,
+                "success": success,
+                "source": source,
+                "message": message,
+                "error_code": error_code,
+                "metadata": metadata,
+            }
+            supabase.table("recognition_events").insert(payload).execute()
+        except Exception:
+            logger.exception("No se pudo persistir el evento de auditoría")
+
+    @staticmethod
+    async def list_auth_events(limit: int = 100, user_id: str | None = None) -> list[dict[str, Any]]:
+        if supabase is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={"error": "SUPABASE_NOT_CONFIGURED", "message": "Supabase no está configurado."},
+            )
+        query = supabase.table("recognition_events").select(
+            "id,event_type,user_id,similarity,recognized,success,source,message,error_code,metadata,created_at"
+        ).order("created_at", desc=True).limit(min(max(limit, 1), 500))
+        if user_id:
+            query = query.eq("user_id", str(user_id))
+        response = query.execute()
+        return response.data or []
+
+    @staticmethod
+    async def find_face_match_for_user(user_id: str, query_embedding: list[float]) -> dict | None:
+        """Compare against only the requested profile, never another user."""
+        if supabase is None:
+            raise HTTPException(status_code=503, detail={"error": "SUPABASE_NOT_CONFIGURED"})
+        try:
+            response = supabase.rpc(
+                "match_face_for_user",
+                {
+                    "query_embedding": query_embedding,
+                    "match_threshold": 0.75,
+                    "target_user_id": str(user_id),
+                },
+            ).execute()
+            if not response.data:
+                return None
+            candidate = response.data[0]
+            user = await UserRepository.get_user_by_id(user_id)
+            return {**(user or {}), **candidate, "similarity": float(candidate.get("similarity", 0))}
+        except Exception as err:
+            raise HTTPException(
+                status_code=500,
+                detail={"error": "FACE_VERIFICATION_UNAVAILABLE", "message": str(err)},
+            ) from err
+
+    @staticmethod
+    async def update_user(user_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
+        if supabase is None:
+            raise HTTPException(status_code=503, detail={"error": "SUPABASE_NOT_CONFIGURED"})
+        values = {key: value for key, value in data.items() if value is not None}
+        if not values:
+            return await UserRepository.get_user_by_id(user_id)
+        response = supabase.table("usuarios").update(values).eq("id", str(user_id)).execute()
+        return response.data[0] if response.data else None
+
+    @staticmethod
+    async def delete_user(user_id: str) -> bool:
+        if supabase is None:
+            raise HTTPException(status_code=503, detail={"error": "SUPABASE_NOT_CONFIGURED"})
+        response = supabase.table("usuarios").delete().eq("id", str(user_id)).execute()
+        return bool(response.data)
 
     @staticmethod
     async def get_dashboard_stats() -> dict[str, Any]:

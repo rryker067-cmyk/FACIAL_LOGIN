@@ -1,7 +1,7 @@
 import { appConfig } from '../config/env'
 import { emptyPerson, PersonRecord } from '../types/person'
 
-async function requestJson<T>(endpoint: string, body?: Record<string, unknown>, method = 'POST'): Promise<T> {
+async function requestJson<T>(endpoint: string, body?: Record<string, unknown>, method = 'POST', extraHeaders: Record<string, string> = {}): Promise<T> {
   if (appConfig.usesDemoRecognition) {
     const error = new Error('La API de reconocimiento no está configurada. Define VITE_API_URL.') as Error & { code?: string }
     error.code = 'API_NOT_CONFIGURED'
@@ -10,7 +10,7 @@ async function requestJson<T>(endpoint: string, body?: Record<string, unknown>, 
 
   const response = await fetch(`${appConfig.apiUrl}${endpoint}`, {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...extraHeaders },
     ...(body ? { body: JSON.stringify(body) } : {}),
   })
 
@@ -40,6 +40,46 @@ export async function recognizeFace(image: string): Promise<PersonRecord> {
 
 export async function listUsers(): Promise<Array<PersonRecord & { id: string; email?: string; imagen_url?: string }>> {
   return requestJson('/api/v1/users', undefined, 'GET')
+}
+
+const authHeaders = () => {
+  const token = localStorage.getItem('veris_access_token')
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
+export type AuditEvent = {
+  id: string
+  event_type: string
+  user_id?: string | null
+  similarity?: number | null
+  success: boolean
+  source: string
+  message?: string | null
+  error_code?: string | null
+  metadata?: Record<string, unknown> | null
+  created_at: string
+}
+
+export async function listAuditEvents(): Promise<AuditEvent[]> {
+  return requestJson('/api/v1/auth/history', undefined, 'GET', authHeaders())
+}
+
+export async function verifyUserFace(userId: string, imagen_base64: string): Promise<{ verification_token: string; expires_in: number }> {
+  return requestJson(`/api/v1/users/${userId}/verify-face`, { imagen_base64 }, 'POST', authHeaders())
+}
+
+export async function updateUser(userId: string, data: Record<string, unknown>, verificationToken: string) {
+  return requestJson(`/api/v1/users/${userId}`, data, 'PATCH', {
+    ...authHeaders(),
+    'X-Face-Verification-Token': verificationToken,
+  })
+}
+
+export async function deleteUser(userId: string, verificationToken: string): Promise<void> {
+  await requestJson(`/api/v1/users/${userId}`, undefined, 'DELETE', {
+    ...authHeaders(),
+    'X-Face-Verification-Token': verificationToken,
+  })
 }
 
 export type DashboardStats = {

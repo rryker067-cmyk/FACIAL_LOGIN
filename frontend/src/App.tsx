@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<'home' | 'login' | 'dashboard'>('home');
+  const [sessionUser, setSessionUser] = useState<{ name: string; role: string } | null>(null);
 
   return (
     <>
@@ -14,13 +15,19 @@ export default function App() {
 
       {currentView === 'login' && (
         <Login 
-          onLoginSuccess={() => setCurrentView('dashboard')} 
+          onLoginSuccess={(userData) => {
+            setSessionUser(userData);
+            setCurrentView('dashboard');
+          }} 
           onBackToHome={() => setCurrentView('home')} 
         />
       )}
 
       {currentView === 'dashboard' && (
-        <Dashboard onLogout={() => setCurrentView('home')} />
+        <Dashboard user={sessionUser} onLogout={() => {
+          setSessionUser(null);
+          setCurrentView('home');
+        }} />
       )}
     </>
   );

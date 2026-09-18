@@ -1,12 +1,57 @@
 from fastapi import APIRouter, HTTPException, status
 from fastapi.concurrency import run_in_threadpool
-from backend.app.schemas.auth import LoginFaceRequest, TokenResponse
+from backend.app.schemas.auth import (
+    CredentialsTokenResponse,
+    LoginCredentialsRequest,
+    LoginFaceRequest,
+    TokenResponse,
+)
 from backend.app.core.liveness import LightweightLiveness
 from backend.app.core.face_embedder import face_embedder
 from backend.app.core.security import create_access_token
 from backend.app.db.repositories.user_repository import UserRepository
+from backend.app.db.supabase_client import supabase
 
 router = APIRouter(prefix="/auth", tags=["Autenticación Facial"])
+
+
+@router.post("/login", response_model=CredentialsTokenResponse)
+async def login_credentials(payload: LoginCredentialsRequest):
+    """Valida el correo y la contraseña contra Supabase Auth."""
+    if supabase is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error": "SUPABASE_NOT_CONFIGURED",
+                "message": "Supabase no está configurado en el backend.",
+            },
+        )
+
+    try:
+        session = await run_in_threadpool(
+            supabase.auth.sign_in_with_password,
+            {"email": payload.email.strip().lower(), "password": payload.password},
+        )
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "error": "INVALID_CREDENTIALS",
+                "message": "Correo o contraseña inválidos.",
+            },
+        )
+
+    user = session.user
+    metadata = user.user_metadata or {}
+    nombre = str(metadata.get("name") or metadata.get("full_name") or user.email or "Usuario")
+
+    return CredentialsTokenResponse(
+        access_token=session.access_token,
+        user_id=str(user.id),
+        nombre=nombre,
+        role=str(metadata.get("role") or "Usuario"),
+    )
+
 
 @router.post("/login-face", response_model=TokenResponse)
 async def login_face_1n(payload: LoginFaceRequest):

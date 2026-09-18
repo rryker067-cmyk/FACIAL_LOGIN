@@ -129,6 +129,7 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
         setCapturedImage(snapshotUrl);
 
         const result = await loginWithFace(snapshotUrl);
+        localStorage.setItem('veris_access_token', result.access_token);
         const matchedName = result.nombre || 'Usuario identificado';
         const parsedMatch = Number.parseFloat(result.match_percentage) || 0;
         setFaceMatch(Math.min(100, Math.round(parsedMatch)));
@@ -153,31 +154,8 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
           return;
         }
 
-        const facialUsers = JSON.parse(localStorage.getItem('veris_facial_users') || '[]');
-
-        if (facialUsers.length > 0) {
-          const matched = facialUsers[facialUsers.length - 1];
-          setRegisterName(matched.name || '');
-          setRegisterEmail(matched.email || '');
-          setRegisterPhone(matched.phone || '');
-          setRegisterDni(matched.dni || '');
-          setRegisterAge(matched.age || '');
-          setMatchedUser(matched);
-          setFaceMatch(86);
-          setRegistrationConfidence(92);
-
-          setStatus('success');
-          setMessage('¡Coincidencia detectada en tiempo real!');
-
-          setTimeout(() => {
-            stopCamera();
-            onSuccess({ name: matched.name, role: matched.role || 'Operador Biométrico' });
-          }, 2000);
-          return;
-        }
-
         setStatus('error');
-        setMessage(error?.message || 'No hay rostros registrados. Por favor, regístrese primero.');
+        setMessage(error?.message || 'No se pudo verificar el rostro contra la base de datos.');
       }
     }, 2500);
   };

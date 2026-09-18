@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend.app.config import settings
 from backend.app.api.v1.router import api_router
+from backend.app.db.supabase_client import supabase
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -26,5 +27,5 @@ async def health_check():
         "status": "healthy",
         "service": settings.PROJECT_NAME,
         "version": settings.VERSION,
-        "supabase_configured": bool(settings.SUPABASE_URL and settings.SUPABASE_KEY),
+        "supabase_configured": supabase is not None,
     }

@@ -38,6 +38,15 @@ export async function loginWithFace(image: string): Promise<{ access_token: stri
   return requestJson('/api/v1/auth/login-face', { imagen_base64: image })
 }
 
+export async function loginWithCredentials(email: string, password: string): Promise<{
+  access_token: string
+  user_id: string
+  nombre: string
+  role: string
+}> {
+  return requestJson('/api/v1/auth/login', { email, password })
+}
+
 export async function registerUserWithFace(data: {
   nombre: string
   apellido: string

@@ -4,7 +4,7 @@ import AntiBotCaptcha from '../components/AntiBotCaptcha';
 import FacialModal from '../components/FacialModal'; // <--- Importamos el componente
 import { promptGoogleAccountSelection } from '../services/googleAuthService';
 import './Login.css';
-import { validarLoginLocal } from './authLocal';
+import { loginWithCredentials } from '../services/recognitionApi';
 
 interface LoginProps {
   onLoginSuccess: (userData: { name: string; role: string }) => void;
@@ -23,7 +23,7 @@ export default function Login({ onLoginSuccess, onBackToHome }: LoginProps) {
   // Estado para controlar la ventana modal de biometría facial
   const [showFacialModal, setShowFacialModal] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -34,35 +34,22 @@ export default function Login({ onLoginSuccess, onBackToHome }: LoginProps) {
 
     setIsLoading(true);
 
-    setTimeout(() => {
+    try {
       if (isRegistering) {
-        setIsLoading(false);
-        alert('¡Cuenta creada con éxito! Ahora puedes iniciar sesión.');
-        setIsRegistering(false);
-        setPassword('');
+        setError('El registro de cuentas debe realizarse mediante Supabase Auth antes de iniciar sesión.');
         return;
       }
 
-      let roleName = '';
-      let realName = '';
-      const cleanUser = username.trim().toLowerCase();
-
-      if (cleanUser === 'admin' && password === 'admin123') {
-        roleName = 'Administrador del Sistema';
-        realName = 'Andrea M.';
-      } else if (cleanUser === 'operador' && password === 'op123') {
-        roleName = 'Operador Biométrico';
-        realName = 'Carlos R.';
-      } else {
-        setError('Credenciales inválidas. Verifique su usuario y contraseña.');
-        setIsLoading(false);
-        return;
-      }
-
-      localStorage.setItem('veris_session', JSON.stringify({ name: realName, role: roleName }));
+      const result = await loginWithCredentials(username, password);
+      const userData = { name: result.nombre, role: result.role };
+      localStorage.setItem('veris_session', JSON.stringify(userData));
+      localStorage.setItem('veris_access_token', result.access_token);
+      onLoginSuccess(userData);
+    } catch (err: any) {
+      setError(err?.message || 'No se pudo validar la sesión con Supabase.');
+    } finally {
       setIsLoading(false);
-      onLoginSuccess({ name: realName, role: roleName });
-    }, 700);
+    }
   };
 
   const handleGoogleLogin = async () => {
@@ -143,14 +130,14 @@ export default function Login({ onLoginSuccess, onBackToHome }: LoginProps) {
 
         <form onSubmit={handleSubmit}>
           <div className="login-form-group">
-            <label className="login-label">Usuario</label>
+            <label className="login-label">Correo electrónico de Supabase</label>
             <div className="login-input-wrapper">
               <span className="login-input-icon"><User size={16} /></span>
               <input 
                 type="text" 
                 value={username} 
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="Ingrese su usuario"
+                placeholder="correo@empresa.com"
                 className="login-input"
                 required
                 disabled={isLoading}

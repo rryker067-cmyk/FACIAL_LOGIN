@@ -8,7 +8,7 @@ from backend.app.core.liveness import LightweightLiveness
 from backend.app.db.repositories.user_repository import UserRepository
 from backend.app.schemas.user import FaceRecognitionRequest
 
-api_router = APIRouter(prefix="/v1")
+api_router = APIRouter()
 api_router.include_router(auth.router)
 api_router.include_router(users.router)
 

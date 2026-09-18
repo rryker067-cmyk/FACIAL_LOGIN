@@ -32,6 +32,10 @@ El modelo ArcFace de 512 dimensiones se coloca en
 el Dockerfile lo descarga automáticamente durante el build de Render cuando no
 está incluido en el contexto.
 
+Las fotografías de registro se guardan en Supabase Storage, en un bucket público
+llamado `avatars`. Si ese bucket no existe, el registro se rechaza y no se crea
+un usuario con una imagen de reemplazo.
+
 ## Próximos módulos
 
 - `backend/`: API FastAPI, autenticación, validación y persistencia.

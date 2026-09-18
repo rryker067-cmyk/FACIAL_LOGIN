@@ -91,20 +91,29 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
   };
 
   const captureSnapshot = (): string => {
-    if (videoRef.current && canvasRef.current) {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      canvas.width = video.videoWidth || 320;
-      canvas.height = video.videoHeight || 240;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.translate(canvas.width, 0);
-        ctx.scale(-1, 1);
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        return canvas.toDataURL('image/png');
-      }
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+      throw new Error('La cámara todavía no está lista. Espere un momento e inténtelo de nuevo.');
     }
-    return 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150';
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    if (!canvas.width || !canvas.height) {
+      throw new Error('No se pudo obtener una imagen válida de la cámara.');
+    }
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      throw new Error('No se pudo preparar la captura de la cámara.');
+    }
+
+    ctx.save();
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    ctx.restore();
+    return canvas.toDataURL('image/jpeg', 0.92);
   };
 
   const runLoginScan = () => {
@@ -168,12 +177,17 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
       return;
     }
 
-    const snapshotUrl = captureSnapshot();
-    setCapturedImage(snapshotUrl);
-    setFaceMatch(96);
-    setRegistrationConfidence(94);
-    setStatus('success');
-    setMessage('¡Fotografía capturada con éxito!');
+    try {
+      const snapshotUrl = captureSnapshot();
+      setCapturedImage(snapshotUrl);
+      setFaceMatch(0);
+      setRegistrationConfidence(0);
+      setStatus('success');
+      setMessage('¡Fotografía capturada con éxito! Se verificará contra la base de datos al guardar.');
+    } catch (error: any) {
+      setStatus('error');
+      setMessage(error?.message || 'No se pudo capturar la fotografía de la cámara.');
+    }
   };
 
   const handleSaveRegistration = async () => {
@@ -242,6 +256,11 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
         setDuplicateNotice(true);
         setStatus('error');
         setMessage('Este usuario ya está registrado. Inicie sesión.');
+        return;
+      }
+      if (error?.code === 'AVATAR_STORAGE_UNAVAILABLE') {
+        setStatus('error');
+        setMessage('No se pudo guardar la foto real. Verifique que exista el bucket "avatars" en Supabase Storage.');
         return;
       }
       setStatus('error');

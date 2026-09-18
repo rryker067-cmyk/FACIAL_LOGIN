@@ -11,6 +11,15 @@ router = APIRouter(prefix="/users", tags=["Gestión de Usuarios"])
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register_user(payload: UserRegisterRequest):
+    if not payload.imagen_base64.startswith("data:image/"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": "CAMERA_IMAGE_REQUIRED",
+                "message": "El registro requiere una fotografía capturada desde la cámara.",
+            },
+        )
+
     cv2_img = await run_in_threadpool(
         LightweightLiveness.verify_quality_and_liveness,
         payload.imagen_base64

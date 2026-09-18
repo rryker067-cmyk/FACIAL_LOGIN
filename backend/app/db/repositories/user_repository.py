@@ -56,24 +56,41 @@ class UserRepository:
     async def upload_avatar(base64_image: str) -> str:
         try:
             if supabase is None:
-                return "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail={
+                        "error": "SUPABASE_NOT_CONFIGURED",
+                        "message": "No se puede guardar la foto porque Supabase no está configurado.",
+                    },
+                )
 
-            encoded_data = base64_image.split(',')[-1]
+            header, encoded_data = base64_image.split(',', 1)
+            mime_type = header.removeprefix("data:").split(";", 1)[0]
+            extension = "png" if mime_type == "image/png" else "jpg"
             file_bytes = base64.b64decode(encoded_data)
-            file_path = f"users/{uuid.uuid4()}.jpg"
+            file_path = f"users/{uuid.uuid4()}.{extension}"
 
             # Subir archivo al bucket "avatars" de Supabase
             supabase.storage.from_("avatars").upload(
                 path=file_path,
                 file=file_bytes,
-                file_options={"content-type": "image/jpeg"}
+                file_options={"content-type": mime_type}
             )
             return supabase.storage.from_("avatars").get_public_url(file_path)
         except Exception as err:
-            # La imagen es opcional para insertar el perfil; un bucket ausente
-            # no debe impedir guardar los datos biométricos en la tabla.
-            logger.warning("No se pudo subir el avatar a Supabase Storage: %s", err)
-            return "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"
+            if isinstance(err, HTTPException):
+                raise err
+            logger.exception("No se pudo subir el avatar a Supabase Storage")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "error": "AVATAR_STORAGE_UNAVAILABLE",
+                    "message": (
+                        "No se pudo guardar la fotografía. Crea el bucket público "
+                        "'avatars' en Supabase Storage e inténtalo de nuevo."
+                    ),
+                },
+            ) from err
 
     @staticmethod
     async def create_user(data: dict, embedding: list[float], avatar_url: str) -> dict:

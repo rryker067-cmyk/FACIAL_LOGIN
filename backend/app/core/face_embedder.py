@@ -1,4 +1,6 @@
+import logging
 import os
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -7,10 +9,15 @@ from fastapi import HTTPException, status
 
 
 class FaceEmbedder:
-    def __init__(self, model_path: str = "app/models/face_recognition.onnx"):
+    EMBEDDING_DIMENSION = 512
+
+    def __init__(self, model_path: str | None = None):
+        if model_path is None:
+            model_path = str(Path(__file__).resolve().parents[1] / "models" / "face_recognition.onnx")
         self.model_path = model_path
         self.session = None
         self.input_name = None
+        self.logger = logging.getLogger(__name__)
 
         if os.path.exists(model_path):
             opts = ort.SessionOptions()
@@ -39,9 +46,24 @@ class FaceEmbedder:
                 raw_embedding = outputs[0][0]
             else:
                 flat = rgb.astype(np.float32).reshape(-1)
-                raw_embedding = flat[:128]
-                if raw_embedding.size < 128:
-                    raw_embedding = np.pad(raw_embedding, (0, 128 - raw_embedding.size), mode='constant')
+                raw_embedding = flat[:self.EMBEDDING_DIMENSION]
+                if raw_embedding.size < self.EMBEDDING_DIMENSION:
+                    raw_embedding = np.pad(
+                        raw_embedding,
+                        (0, self.EMBEDDING_DIMENSION - raw_embedding.size),
+                        mode='constant',
+                    )
+                self.logger.warning(
+                    "Modelo facial ONNX no disponible; usando embedding de respaldo de %s dimensiones.",
+                    self.EMBEDDING_DIMENSION,
+                )
+
+            raw_embedding = np.asarray(raw_embedding, dtype=np.float32).reshape(-1)
+            if raw_embedding.size != self.EMBEDDING_DIMENSION:
+                raise ValueError(
+                    f"El modelo facial generó {raw_embedding.size} dimensiones; "
+                    f"Supabase requiere {self.EMBEDDING_DIMENSION}."
+                )
 
             norm = np.linalg.norm(raw_embedding)
             if norm == 0:

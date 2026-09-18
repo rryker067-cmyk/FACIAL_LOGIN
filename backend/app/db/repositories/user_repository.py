@@ -39,6 +39,9 @@ class UserRepository:
     @staticmethod
     async def create_user(data: dict, embedding: list[float], avatar_url: str) -> dict:
         try:
+            if len(embedding) != 512:
+                raise ValueError(f"El embedding debe tener 512 dimensiones, recibió {len(embedding)}.")
+
             record = {
                 "id": str(uuid.uuid4()),
                 "nombre": data["nombre"],

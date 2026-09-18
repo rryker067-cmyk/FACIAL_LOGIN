@@ -27,6 +27,11 @@ función RPC `match_face_1n` sobre la tabla `usuarios`. El acceso solo se conced
 cuando Supabase devuelve una coincidencia mínima del 75%; cualquier valor
 inferior se rechaza.
 
+El modelo ArcFace de 512 dimensiones se coloca en
+`backend/app/models/face_recognition.onnx`. Como el archivo pesa más de 100 MB,
+el Dockerfile lo descarga automáticamente durante el build de Render cuando no
+está incluido en el contexto.
+
 ## Próximos módulos
 
 - `backend/`: API FastAPI, autenticación, validación y persistencia.

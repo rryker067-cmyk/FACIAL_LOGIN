@@ -9,6 +9,7 @@ import {
   ClipboardList,
   Database,
   FileImage,
+  FileText,
   Fingerprint,
   LayoutDashboard,
   Menu,
@@ -40,6 +41,43 @@ const navItems = [
 
 type FacialUser = PersonRecord & { id?: string; email?: string; avatar?: string }
 type Validation = { name: string; time: string; match: string; status: 'success' | 'failed' }
+type StoredDocument = { id: string; name: string; type: string; size: number; blob: Blob; createdAt: string }
+
+const DOCUMENT_DB = 'veris-documentation'
+const DOCUMENT_STORE = 'documents'
+
+const openDocumentDb = (): Promise<IDBDatabase> => new Promise((resolve, reject) => {
+  const request = indexedDB.open(DOCUMENT_DB, 1)
+  request.onupgradeneeded = () => request.result.createObjectStore(DOCUMENT_STORE, { keyPath: 'id' })
+  request.onsuccess = () => resolve(request.result)
+  request.onerror = () => reject(request.error)
+})
+
+const loadDocuments = async (): Promise<StoredDocument[]> => {
+  const db = await openDocumentDb()
+  return new Promise((resolve, reject) => {
+    const request = db.transaction(DOCUMENT_STORE, 'readonly').objectStore(DOCUMENT_STORE).getAll()
+    request.onsuccess = () => resolve((request.result as StoredDocument[]).sort((a, b) => b.createdAt.localeCompare(a.createdAt)))
+    request.onerror = () => reject(request.error)
+  })
+}
+
+const storeDocument = async (file: File): Promise<StoredDocument> => {
+  const document: StoredDocument = {
+    id: crypto.randomUUID(),
+    name: file.name,
+    type: file.type,
+    size: file.size,
+    blob: file,
+    createdAt: new Date().toISOString(),
+  }
+  const db = await openDocumentDb()
+  return new Promise((resolve, reject) => {
+    const request = db.transaction(DOCUMENT_STORE, 'readwrite').objectStore(DOCUMENT_STORE).put(document)
+    request.onsuccess = () => resolve(document)
+    request.onerror = () => reject(request.error)
+  })
+}
 
 const readStorage = <T,>(key: string, fallback: T): T => {
   try {
@@ -67,6 +105,8 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   const [validationHistory, setValidationHistory] = useState<Validation[]>([])
   const [faceMatch, setFaceMatch] = useState(0)
   const [registrationConfidence, setRegistrationConfidence] = useState(0)
+  const [documents, setDocuments] = useState<StoredDocument[]>([])
+  const [documentError, setDocumentError] = useState<string | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
 
@@ -83,6 +123,10 @@ export default function Dashboard({ onLogout }: DashboardProps) {
       dni: user.dni || '',
     })))
     setValidationHistory(readStorage<Validation[]>('veris_validation_history', []))
+  }, [])
+
+  useEffect(() => {
+    loadDocuments().then(setDocuments).catch(() => setDocumentError('No se pudo cargar la documentación guardada.'))
   }, [])
 
   useEffect(() => {
@@ -193,6 +237,36 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     localStorage.setItem('veris_facial_users', JSON.stringify(users))
     setIsSaved(true)
   }
+
+  const handleDocumentationUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+
+    if (!file.type.startsWith('image/') && file.type !== 'application/pdf') {
+      setDocumentError('Solo se permiten archivos PDF o imágenes.')
+      return
+    }
+
+    try {
+      const saved = await storeDocument(file)
+      setDocuments((current) => [saved, ...current])
+      setDocumentError(null)
+    } catch {
+      setDocumentError('No se pudo guardar el documento de forma persistente.')
+    }
+  }
+
+  const downloadDocumentation = (document: StoredDocument) => {
+    const url = URL.createObjectURL(document.blob)
+    const anchor = window.document.createElement('a')
+    anchor.href = url
+    anchor.download = document.name
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const formatDocumentSize = (size: number) => `${Math.max(1, Math.round(size / 1024))} KB`
 
   const recognizedCount = validationHistory.filter((item) => item.status === 'success').length
   const failedCount = validationHistory.filter((item) => item.status === 'failed').length
@@ -512,7 +586,16 @@ export default function Dashboard({ onLogout }: DashboardProps) {
           </section>
 
           <section className={`dashboard-info-grid ${activeSection !== 'documentacion' && activeSection !== 'integraciones' && activeSection !== 'seguridad' ? 'dashboard-section-hidden' : ''}`}>
-            <div className={`panel dashboard-section ${activeSection === 'documentacion' ? '' : 'dashboard-section-hidden'}`} id="documentacion"><div className="panel-heading compact-heading"><div><span className="section-kicker">GUÍA</span><h2>Documentación</h2></div><BookOpen size={19} /></div><div className="info-cards"><div><b>1. Captura una imagen</b><span>Usa una foto frontal, nítida y con buena iluminación.</span></div><div><b>2. Verifica los datos</b><span>El sistema consulta la coincidencia facial y completa el formulario.</span></div><div><b>3. Guarda el registro</b><span>Los perfiles quedan disponibles para futuras validaciones.</span></div></div></div>
+            <div className={`panel dashboard-section ${activeSection === 'documentacion' ? '' : 'dashboard-section-hidden'}`} id="documentacion">
+              <div className="panel-heading compact-heading"><div><span className="section-kicker">GUÍA Y ARCHIVOS</span><h2>Documentación</h2></div><BookOpen size={19} /></div>
+              <div className="info-cards"><div><b>1. Captura una imagen</b><span>Usa una foto frontal, nítida y con buena iluminación.</span></div><div><b>2. Verifica los datos</b><span>El sistema consulta la coincidencia facial y completa el formulario.</span></div><div><b>3. Guarda el registro</b><span>Los perfiles y documentos quedan disponibles para futuras validaciones.</span></div></div>
+              <div className="capture-actions">
+                <label className="button button--dark"><FileImage size={16} /> Subir PDF o imagen<input type="file" accept="application/pdf,image/*" onChange={handleDocumentationUpload} /></label>
+                <span className="capture-note"><ShieldCheck size={15} /> Se conserva aunque cierres la página.</span>
+              </div>
+              {documentError && <p className="recognition-error" role="alert">{documentError}</p>}
+              {documents.length ? <div className="people-grid">{documents.map((document) => <button className="person-card" type="button" key={document.id} onClick={() => downloadDocumentation(document)}><div className="review-avatar">{document.type === 'application/pdf' ? <FileText size={18} /> : <FileImage size={18} />}</div><div><b>{document.name}</b><span>{document.type === 'application/pdf' ? 'PDF' : 'Imagen'} · {formatDocumentSize(document.size)}</span></div><ExternalLink size={17} /></button>)}</div> : <div className="empty-state">No hay documentos guardados. Puedes subir archivos PDF o imágenes.</div>}
+            </div>
             <div className={`panel dashboard-section ${activeSection === 'integraciones' ? '' : 'dashboard-section-hidden'}`} id="integraciones"><div className="panel-heading compact-heading"><div><span className="section-kicker">SERVICIOS</span><h2>Integraciones</h2></div><ExternalLink size={19} /></div><div className="integration-list"><div><Database size={17} /><span><b>Supabase</b><small>Persistencia de usuarios y embeddings</small></span><em>{appConfig.usesDemoRecognition ? 'Configurar' : 'Conectado'}</em></div><div><Server size={17} /><span><b>FastAPI</b><small>API de reconocimiento facial</small></span><em>{appConfig.usesDemoRecognition ? 'Demo' : 'Operativo'}</em></div></div></div>
             <div className={`panel dashboard-section ${activeSection === 'seguridad' ? '' : 'dashboard-section-hidden'}`} id="seguridad"><div className="panel-heading compact-heading"><div><span className="section-kicker">CONTROL</span><h2>Seguridad</h2></div><ShieldCheck size={19} /></div><div className="security-summary"><CheckCircle2 size={18} /><span>Las imágenes se procesan con confirmación explícita y el acceso se registra en el historial.</span></div><div className="security-summary"><ShieldCheck size={18} /><span>Sesión protegida con autenticación facial y token de acceso.</span></div></div>
           </section>

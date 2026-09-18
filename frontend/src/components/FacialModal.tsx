@@ -239,17 +239,8 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
         onSuccess({ name: newUserData.name, role: newUserData.role });
       }, 1800);
     } catch (error: any) {
-      const facialUsers = JSON.parse(localStorage.getItem('veris_facial_users') || '[]');
-      facialUsers.push(newUserData);
-      localStorage.setItem('veris_facial_users', JSON.stringify(facialUsers));
-
-      setStatus('success');
-      setMessage('Registro guardado localmente. La API backend no está disponible ahora.');
-
-      setTimeout(() => {
-        stopCamera();
-        onSuccess({ name: newUserData.name, role: newUserData.role });
-      }, 1800);
+      setStatus('error');
+      setMessage(error?.message || 'No se pudo guardar el registro en Supabase. Revisa la configuración del backend.');
     }
   };
 

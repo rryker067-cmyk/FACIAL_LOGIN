@@ -25,5 +25,6 @@ async def health_check():
     return {
         "status": "healthy",
         "service": settings.PROJECT_NAME,
-        "version": settings.VERSION
+        "version": settings.VERSION,
+        "supabase_configured": bool(settings.SUPABASE_URL and settings.SUPABASE_KEY),
     }

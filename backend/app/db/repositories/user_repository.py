@@ -1,4 +1,5 @@
 import base64
+import logging
 import uuid
 from typing import Any
 
@@ -7,6 +8,7 @@ from fastapi import HTTPException, status
 from backend.app.db.supabase_client import supabase
 
 _MEMORY_USERS: list[dict[str, Any]] = []
+logger = logging.getLogger(__name__)
 
 
 class UserRepository:
@@ -29,10 +31,10 @@ class UserRepository:
             )
             return supabase.storage.from_("avatars").get_public_url(file_path)
         except Exception as err:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error en almacenamiento de imagen: {str(err)}"
-            )
+            # La imagen es opcional para insertar el perfil; un bucket ausente
+            # no debe impedir guardar los datos biométricos en la tabla.
+            logger.warning("No se pudo subir el avatar a Supabase Storage: %s", err)
+            return "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"
 
     @staticmethod
     async def create_user(data: dict, embedding: list[float], avatar_url: str) -> dict:
@@ -54,8 +56,11 @@ class UserRepository:
                 return record
 
             response = supabase.table("usuarios").insert(record).execute()
+            if not response.data:
+                raise RuntimeError("Supabase no devolvió el registro insertado.")
             return response.data[0]
         except Exception as err:
+            logger.exception("Error insertando usuario en la tabla usuarios de Supabase")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Error de inserción en base de datos: {str(err)}"

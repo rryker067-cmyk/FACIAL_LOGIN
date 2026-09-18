@@ -506,6 +506,41 @@ button { border: 0; }
 }
 .details-panel { padding: 25px 28px; }
 .recognition-error { margin: -10px 0 18px; color: #b54747; font-size: 10px; line-height: 1.5; }
+
+.dashboard-warning-toast {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 1200;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: min(360px, calc(100vw - 44px));
+  padding: 14px 16px;
+  color: #713f12;
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  border-left: 4px solid #d97706;
+  border-radius: 10px;
+  box-shadow: 0 14px 30px rgba(120, 53, 15, 0.2);
+}
+
+.dashboard-warning-toast > span {
+  display: grid;
+  width: 21px;
+  height: 21px;
+  place-items: center;
+  flex: 0 0 auto;
+  color: #fff;
+  background: #d97706;
+  border-radius: 50%;
+  font-weight: 700;
+}
+
+.dashboard-warning-toast div { display: grid; gap: 3px; }
+.dashboard-warning-toast strong { font-size: 12px; }
+.dashboard-warning-toast small { font-size: 11px; line-height: 1.35; }
+.dashboard-warning-toast button { margin-left: auto; color: #92400e; background: transparent; border: 0; font-size: 20px; cursor: pointer; }
 .recognize-button {
   display: flex;
   align-items: center;

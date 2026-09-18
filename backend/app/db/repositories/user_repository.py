@@ -14,6 +14,22 @@ logger = logging.getLogger(__name__)
 class UserRepository:
 
     @staticmethod
+    async def list_users() -> list[dict[str, Any]]:
+        try:
+            if supabase is None:
+                return _MEMORY_USERS.copy()
+
+            response = supabase.table("usuarios").select(
+                "id,nombre,apellido,edad,telefono,email,dni,imagen_url"
+            ).order("nombre").execute()
+            return response.data or []
+        except Exception as err:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error consultando usuarios en Supabase: {str(err)}",
+            ) from err
+
+    @staticmethod
     async def find_by_identity(email: str | None, dni: str | None) -> dict | None:
         if not email and not dni:
             return None

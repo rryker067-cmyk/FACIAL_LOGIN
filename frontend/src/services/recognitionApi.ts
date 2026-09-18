@@ -1,16 +1,16 @@
 import { appConfig } from '../config/env'
 import { emptyPerson, PersonRecord } from '../types/person'
 
-async function requestJson<T>(endpoint: string, body: Record<string, unknown>): Promise<T> {
+async function requestJson<T>(endpoint: string, body?: Record<string, unknown>, method = 'POST'): Promise<T> {
   if (appConfig.usesDemoRecognition) {
     await new Promise((resolve) => window.setTimeout(resolve, 700))
     return { ...(emptyPerson as T) } as T
   }
 
   const response = await fetch(`${appConfig.apiUrl}${endpoint}`, {
-    method: 'POST',
+    method,
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    ...(body ? { body: JSON.stringify(body) } : {}),
   })
 
   if (!response.ok) {
@@ -35,6 +35,10 @@ export async function recognizeFace(image: string): Promise<PersonRecord> {
     ...emptyPerson,
     ...Object.fromEntries(Object.entries(result).map(([key, value]) => [key, String(value)])),
   }
+}
+
+export async function listUsers(): Promise<Array<PersonRecord & { id: string; email?: string; imagen_url?: string }>> {
+  return requestJson('/api/v1/users', undefined, 'GET')
 }
 
 export async function loginWithFace(image: string): Promise<{

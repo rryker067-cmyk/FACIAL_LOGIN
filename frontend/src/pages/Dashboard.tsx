@@ -29,7 +29,7 @@ import {
 } from 'lucide-react'
 import Field from '../components/Field'
 import { appConfig } from '../config/env'
-import { recognizeFace } from '../services/recognitionApi'
+import { listUsers, recognizeFace } from '../services/recognitionApi'
 import { emptyPerson, PersonRecord } from '../types/person'
 
 const navItems = [
@@ -99,6 +99,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   const [isSaved, setIsSaved] = useState(false)
   const [isRecognizing, setIsRecognizing] = useState(false)
   const [recognitionError, setRecognitionError] = useState<string | null>(null)
+  const [recognitionNotice, setRecognitionNotice] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [activeSection, setActiveSection] = useState('resumen')
   const [registeredUsers, setRegisteredUsers] = useState<FacialUser[]>([])
@@ -113,15 +114,14 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   useEffect(() => () => streamRef.current?.getTracks().forEach((track) => track.stop()), [])
 
   useEffect(() => {
-    const storedUsers = readStorage<Array<FacialUser & { name?: string; phone?: string; age?: string }>>('veris_facial_users', [])
-    setRegisteredUsers(storedUsers.map((user) => ({
-      ...user,
-      nombre: user.nombre || user.name?.split(' ')[0] || '',
-      apellido: user.apellido || user.name?.split(' ').slice(1).join(' ') || '',
-      edad: user.edad || user.age || '',
-      telefono: user.telefono || user.phone || '',
-      dni: user.dni || '',
-    })))
+    listUsers()
+      .then((users) => setRegisteredUsers(users.map((user) => ({
+        ...user,
+        edad: String(user.edad ?? ''),
+        telefono: user.telefono || '',
+        dni: user.dni || '',
+      }))))
+      .catch(() => setRecognitionNotice('No se pudieron cargar los usuarios desde Supabase.'))
     setValidationHistory(readStorage<Validation[]>('veris_validation_history', []))
   }, [])
 
@@ -215,6 +215,8 @@ export default function Dashboard({ onLogout }: DashboardProps) {
       setForm(result)
       const match = Math.min(100, Math.max(0, Number.parseFloat(result.similarity || '0') * 100))
       const isAcceptedMatch = Boolean(result.nombre) && match >= 75
+      setRecognitionNotice(isAcceptedMatch ? null : 'No se encontró al usuario en la base de datos.')
+      if (isAcceptedMatch && result.imagen_url) setPreview(result.imagen_url)
       setFaceMatch(isAcceptedMatch ? match : 0)
       setRegistrationConfidence(isAcceptedMatch ? Math.round(match) : 0)
       saveValidation({
@@ -232,10 +234,8 @@ export default function Dashboard({ onLogout }: DashboardProps) {
 
   const saveRecord = (event: FormEvent) => {
     event.preventDefault()
-    const users = [...registeredUsers, { ...form, id: crypto.randomUUID() }]
-    setRegisteredUsers(users)
-    localStorage.setItem('veris_facial_users', JSON.stringify(users))
-    setIsSaved(true)
+    setRecognitionNotice('Los datos mostrados son de solo lectura y se sincronizan desde Supabase.')
+    setIsSaved(Boolean(form.nombre))
   }
 
   const handleDocumentationUpload = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -277,8 +277,11 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     const day = new Date()
     day.setDate(day.getDate() - (6 - index))
     const label = day.toLocaleDateString('es-PE', { weekday: 'short' }).slice(0, 3)
-    const count = validationHistory.filter((item) => new Date(item.time).getDate() === day.getDate()).length
-    return { label, count: Math.max(count, index === 6 && validationHistory.length ? 1 : 0) }
+    const count = validationHistory.filter((item) => {
+      const itemDate = new Date(item.time)
+      return itemDate.toDateString() === day.toDateString()
+    }).length
+    return { label, count }
   })
   const maxChartValue = Math.max(...chartValues.map((item) => item.count), 1)
   const reviewQueue = validationHistory.filter((item) => item.status === 'failed').slice(0, 5).map((item, index) => ({
@@ -318,6 +321,13 @@ export default function Dashboard({ onLogout }: DashboardProps) {
       </aside>
 
       <main className="main-content">
+        {recognitionNotice && (
+          <div className="dashboard-warning-toast" role="alert">
+            <span>!</span>
+            <div><strong>No se encontró al usuario</strong><small>{recognitionNotice}</small></div>
+            <button type="button" onClick={() => setRecognitionNotice(null)} aria-label="Cerrar alerta">×</button>
+          </div>
+        )}
         <header className="topbar">
           <button className="icon-button menu-button" aria-label="Abrir menú" onClick={() => setSidebarOpen(true)}><Menu size={21} /></button>
           <div className="topbar-search"><Search size={17} /><input aria-label="Buscar" placeholder="Buscar en el registro..." /></div>

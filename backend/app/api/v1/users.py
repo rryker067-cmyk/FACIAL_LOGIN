@@ -9,6 +9,11 @@ from backend.app.schemas.user import UserRegisterRequest, UserResponse
 router = APIRouter(prefix="/users", tags=["Gestión de Usuarios"])
 
 
+@router.get("")
+async def list_users():
+    return await UserRepository.list_users()
+
+
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register_user(payload: UserRegisterRequest):
     if not payload.imagen_base64.startswith("data:image/"):

@@ -32,6 +32,8 @@ async def recognize_face(payload: FaceRecognitionRequest):
                 "edad": "",
                 "dni": "",
                 "telefono": "",
+                "email": "",
+                "imagen_url": "",
                 "similarity": 0,
             }
 
@@ -41,6 +43,8 @@ async def recognize_face(payload: FaceRecognitionRequest):
             "edad": match.get("edad", ""),
             "dni": match.get("dni", ""),
             "telefono": match.get("telefono", ""),
+            "email": match.get("email", ""),
+            "imagen_url": match.get("imagen_url", ""),
             "similarity": similarity,
         }
     except HTTPException:

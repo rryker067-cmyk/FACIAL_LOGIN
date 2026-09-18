@@ -15,7 +15,15 @@ async function requestJson<T>(endpoint: string, body: Record<string, unknown>): 
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}))
-    throw new Error(error?.detail ?? 'No se pudo completar la solicitud al backend')
+    const detail = error?.detail
+    const apiError = new Error(
+      typeof detail === 'string'
+        ? detail
+        : detail?.message ?? 'No se pudo completar la solicitud al backend',
+    ) as Error & { code?: string; status?: number }
+    apiError.code = typeof detail === 'object' ? detail?.error : undefined
+    apiError.status = response.status
+    throw apiError
   }
 
   return response.json() as Promise<T>

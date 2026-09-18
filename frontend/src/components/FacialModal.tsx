@@ -122,6 +122,15 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
           onSuccess({ name: matchedName, role: 'Operador Biométrico' });
         }, 2000);
       } catch (error: any) {
+        if (error?.code === 'FACE_NOT_RECOGNIZED' || error?.status === 401) {
+          setMode('register');
+          setCameraActive(false);
+          setScanning(false);
+          setStatus('error');
+          setMessage('No reconocimos este rostro. Completa tus datos y guarda el registro para poder iniciar sesión la próxima vez.');
+          return;
+        }
+
         const facialUsers = JSON.parse(localStorage.getItem('veris_facial_users') || '[]');
 
         if (facialUsers.length > 0) {

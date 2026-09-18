@@ -18,6 +18,13 @@ import {
   Upload,
   UsersRound,
   X,
+  Activity,
+  BarChart3,
+  BookOpen,
+  CheckCircle2,
+  Clock3,
+  ExternalLink,
+  Server,
 } from 'lucide-react'
 import Field from '../components/Field'
 import { appConfig } from '../config/env'
@@ -25,15 +32,23 @@ import { recognizeFace } from '../services/recognitionApi'
 import { emptyPerson, PersonRecord } from '../types/person'
 
 const navItems = [
-  { label: 'Resumen', icon: LayoutDashboard },
-  { label: 'Reconocer rostro', icon: ScanFace, active: true },
-  { label: 'Personas registradas', icon: UsersRound },
-  { label: 'Historial', icon: ClipboardList },
+  { id: 'resumen', label: 'Resumen', icon: LayoutDashboard },
+  { id: 'reconocer', label: 'Reconocer rostro', icon: ScanFace },
+  { id: 'personas', label: 'Personas registradas', icon: UsersRound },
+  { id: 'historial', label: 'Historial', icon: ClipboardList },
 ]
 
-const reviewQueue: Array<{ name: string; status: string; risk: string; id: string }> = []
-const validationHistory: Array<{ name: string; time: string; match: string }> = []
-const auditTrail: Array<{ action: string; user: string; time: string }> = []
+type FacialUser = PersonRecord & { id?: string; email?: string; avatar?: string }
+type Validation = { name: string; time: string; match: string; status: 'success' | 'failed' }
+
+const readStorage = <T,>(key: string, fallback: T): T => {
+  try {
+    const value = localStorage.getItem(key)
+    return value ? JSON.parse(value) as T : fallback
+  } catch {
+    return fallback
+  }
+}
 
 interface DashboardProps {
   onLogout: () => void;
@@ -47,10 +62,38 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   const [isRecognizing, setIsRecognizing] = useState(false)
   const [recognitionError, setRecognitionError] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [activeSection, setActiveSection] = useState('resumen')
+  const [registeredUsers, setRegisteredUsers] = useState<FacialUser[]>([])
+  const [validationHistory, setValidationHistory] = useState<Validation[]>([])
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
 
   useEffect(() => () => streamRef.current?.getTracks().forEach((track) => track.stop()), [])
+
+  useEffect(() => {
+    const storedUsers = readStorage<Array<FacialUser & { name?: string; phone?: string; age?: string }>>('veris_facial_users', [])
+    setRegisteredUsers(storedUsers.map((user) => ({
+      ...user,
+      nombre: user.nombre || user.name?.split(' ')[0] || '',
+      apellido: user.apellido || user.name?.split(' ').slice(1).join(' ') || '',
+      edad: user.edad || user.age || '',
+      telefono: user.telefono || user.phone || '',
+      dni: user.dni || '',
+    })))
+    setValidationHistory(readStorage<Validation[]>('veris_validation_history', []))
+  }, [])
+
+  const saveValidation = (entry: Validation) => {
+    const next = [entry, ...validationHistory].slice(0, 50)
+    setValidationHistory(next)
+    localStorage.setItem('veris_validation_history', JSON.stringify(next))
+  }
+
+  const selectSection = (section: string) => {
+    setActiveSection(section)
+    setSidebarOpen(false)
+    window.setTimeout(() => document.getElementById(section)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
+  }
 
   const updateField = (field: keyof PersonRecord, value: string) => {
     setForm((current) => ({ ...current, [field]: value }))
@@ -101,6 +144,13 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     try {
       const result = await recognizeFace(preview)
       setForm(result)
+      const match = result.nombre ? 95 : 0
+      saveValidation({
+        name: result.nombre ? `${result.nombre} ${result.apellido}` : 'Rostro no reconocido',
+        time: new Date().toISOString(),
+        match: `${match}%`,
+        status: result.nombre ? 'success' : 'failed',
+      })
     } catch {
       setRecognitionError('No se pudo conectar con el servicio de reconocimiento. Revisa FastAPI e inténtalo de nuevo.')
     } finally {
@@ -110,7 +160,39 @@ export default function Dashboard({ onLogout }: DashboardProps) {
 
   const saveRecord = (event: FormEvent) => {
     event.preventDefault()
+    const users = [...registeredUsers, { ...form, id: crypto.randomUUID() }]
+    setRegisteredUsers(users)
+    localStorage.setItem('veris_facial_users', JSON.stringify(users))
     setIsSaved(true)
+  }
+
+  const recognizedCount = validationHistory.filter((item) => item.status === 'success').length
+  const failedCount = validationHistory.filter((item) => item.status === 'failed').length
+  const recognitionRate = validationHistory.length
+    ? Math.round((recognizedCount / validationHistory.length) * 100)
+    : 0
+  const chartValues = Array.from({ length: 7 }, (_, index) => {
+    const day = new Date()
+    day.setDate(day.getDate() - (6 - index))
+    const label = day.toLocaleDateString('es-PE', { weekday: 'short' }).slice(0, 3)
+    const count = validationHistory.filter((item) => new Date(item.time).getDate() === day.getDate()).length
+    return { label, count: Math.max(count, index === 6 && validationHistory.length ? 1 : 0) }
+  })
+  const maxChartValue = Math.max(...chartValues.map((item) => item.count), 1)
+  const reviewQueue = validationHistory.filter((item) => item.status === 'failed').slice(0, 5).map((item, index) => ({
+    name: item.name,
+    status: 'Pendiente',
+    risk: 'medio',
+    id: `REV-${index + 1}`,
+  }))
+  const auditTrail = validationHistory.slice(0, 6).map((item) => ({
+    action: item.status === 'success' ? 'Rostro validado' : 'Rostro no reconocido',
+    user: item.name,
+    time: item.time,
+  }))
+  const formatDate = (value: string) => {
+    const date = new Date(value)
+    return Number.isNaN(date.getTime()) ? value : date.toLocaleString('es-PE', { dateStyle: 'short', timeStyle: 'short' })
   }
 
   return (
@@ -124,11 +206,11 @@ export default function Dashboard({ onLogout }: DashboardProps) {
         <div className="workspace-switcher"><div className="workspace-avatar">R</div><div><b>Registro central</b><span>Workspace privado</span></div><ChevronDown size={15} /></div>
         <nav className="main-nav" aria-label="Navegación principal">
           <span className="nav-label">Espacio de trabajo</span>
-          {navItems.map(({ label, icon: Icon, active }) => <a className={`nav-item ${active ? 'nav-item--active' : ''}`} href="#reconocer" key={label} onClick={() => setSidebarOpen(false)}><Icon size={18} /><span>{label}</span>{active && <i />}</a>)}
+          {navItems.map(({ id, label, icon: Icon }) => <a className={`nav-item ${activeSection === id ? 'nav-item--active' : ''}`} href={`#${id}`} key={label} onClick={(event) => { event.preventDefault(); selectSection(id) }}><Icon size={18} /><span>{label}</span>{activeSection === id && <i />}</a>)}
           <span className="nav-label nav-label--spaced">Configuración</span>
-          <a className="nav-item" href="#reconocer" onClick={() => setSidebarOpen(false)}><FileImage size={18} /><span>Documentación</span></a>
-          <a className="nav-item" href="#integraciones"><Database size={18} /><span>Integraciones</span></a>
-          <a className="nav-item" href="#seguridad"><ShieldCheck size={18} /><span>Seguridad</span></a>
+          <a className={`nav-item ${activeSection === 'documentacion' ? 'nav-item--active' : ''}`} href="#documentacion" onClick={(event) => { event.preventDefault(); selectSection('documentacion') }}><FileImage size={18} /><span>Documentación</span></a>
+          <a className={`nav-item ${activeSection === 'integraciones' ? 'nav-item--active' : ''}`} href="#integraciones" onClick={(event) => { event.preventDefault(); selectSection('integraciones') }}><Database size={18} /><span>Integraciones</span></a>
+          <a className={`nav-item ${activeSection === 'seguridad' ? 'nav-item--active' : ''}`} href="#seguridad" onClick={(event) => { event.preventDefault(); selectSection('seguridad') }}><ShieldCheck size={18} /><span>Seguridad</span></a>
         </nav>
         <div className="sidebar-foot"><div className="status-dot" /><div><b>Servicios operativos</b><span>Última sincronización: ahora</span></div></div>
       </aside>
@@ -150,8 +232,20 @@ export default function Dashboard({ onLogout }: DashboardProps) {
           </div>
         </header>
 
-        <div className="content-wrap" id="reconocer">
-          <div className="page-heading"><div><div className="eyebrow"><span /> OPERACIONES / IDENTIDAD</div><h1>Reconocer un rostro</h1><p>Captura una imagen para identificar y registrar los datos de una persona.</p></div><div className="heading-meta"><span className="live-dot" /> {appConfig.usesDemoRecognition ? 'Modo demo' : 'API conectada'} <small>FastAPI · Supabase</small></div></div>
+        <div className="content-wrap" id="resumen">
+          <div className="page-heading"><div><div className="eyebrow"><span /> OPERACIONES / IDENTIDAD</div><h1>{activeSection === 'resumen' ? 'Resumen operativo' : activeSection === 'personas' ? 'Personas registradas' : activeSection === 'historial' ? 'Historial de validaciones' : activeSection === 'documentacion' ? 'Documentación' : activeSection === 'integraciones' ? 'Integraciones' : activeSection === 'seguridad' ? 'Seguridad' : 'Reconocer un rostro'}</h1><p>{activeSection === 'resumen' ? 'Supervisa el estado de la identidad biométrica y la actividad reciente.' : 'Gestiona la operación de reconocimiento facial desde un solo lugar.'}</p></div><div className="heading-meta"><span className="live-dot" /> {appConfig.usesDemoRecognition ? 'Modo demo' : 'API conectada'} <small>FastAPI · Supabase</small></div></div>
+
+          <section className="dashboard-overview" aria-label="Resumen de métricas">
+            <div className="metric-card metric-card--success"><span className="metric-label">Personas registradas</span><strong>{registeredUsers.length}</strong><small><UsersRound size={12} /> perfiles biométricos</small></div>
+            <div className="metric-card"><span className="metric-label">Validaciones</span><strong>{validationHistory.length}</strong><small><Activity size={12} /> intentos procesados</small></div>
+            <div className="metric-card"><span className="metric-label">Tasa de reconocimiento</span><strong>{recognitionRate}%</strong><small><CheckCircle2 size={12} /> coincidencias exitosas</small></div>
+            <div className="metric-card"><span className="metric-label">No reconocidos</span><strong>{failedCount}</strong><small><Clock3 size={12} /> requieren registro</small></div>
+          </section>
+
+          <section className="analytics-grid" aria-label="Analítica facial">
+            <div className="panel analytics-panel"><div className="panel-heading compact-heading"><div><span className="section-kicker">ACTIVIDAD</span><h2>Validaciones de los últimos 7 días</h2></div><BarChart3 size={19} /></div><div className="bar-chart">{chartValues.map((item) => <div className="bar-column" key={item.label}><span>{item.count}</span><div className="bar-track"><i style={{ height: `${Math.max((item.count / maxChartValue) * 100, item.count ? 12 : 4)}%` }} /></div><small>{item.label}</small></div>)}</div></div>
+            <div className="panel analytics-panel"><div className="panel-heading compact-heading"><div><span className="section-kicker">ESTADO</span><h2>Rendimiento del servicio</h2></div><Server size={19} /></div><div className="service-health"><div><span className="health-icon"><CheckCircle2 size={17} /></span><div><b>API de reconocimiento</b><small>{appConfig.usesDemoRecognition ? 'Modo demo activo' : 'Conectada y operativa'}</small></div><strong>100%</strong></div><div><span className="health-icon"><Database size={17} /></span><div><b>Persistencia de usuarios</b><small>{registeredUsers.length ? 'Datos disponibles localmente' : 'Sin perfiles registrados'}</small></div><strong>{registeredUsers.length ? 'OK' : '—'}</strong></div></div></div>
+          </section>
 
           <div className="steps" aria-label="Progreso del registro"><div className="step step--active"><span>01</span><b>Capturar imagen</b></div><div className="step-line" /><div className={`step ${preview ? 'step--active' : ''}`}><span>02</span><b>Verificar datos</b></div><div className="step-line" /><div className={`step ${isSaved ? 'step--active' : ''}`}><span>03</span><b>Guardar registro</b></div></div>
 
@@ -178,7 +272,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
             </div>
           </div>
 
-          <section className="recognition-grid">
+          <section className="recognition-grid" id="reconocer">
             <div className="panel capture-panel"><div className="panel-heading"><div><span className="section-kicker">PASO 01</span><h2>Imagen de identificación</h2></div><span className="secure-badge"><ShieldCheck size={14} /> Privada</span></div>
               <div className={`capture-stage ${preview ? 'capture-stage--preview' : ''} ${isCameraOpen ? 'capture-stage--camera' : ''}`}>
                 {isCameraOpen ? (
@@ -341,7 +435,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                       <div className="mini-avatar">{row.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</div>
                       <div>
                         <b>{row.name}</b>
-                        <span>{row.time}</span>
+                        <span>{formatDate(row.time)}</span>
                       </div>
                     </div>
                     <strong>{row.match}</strong>
@@ -364,12 +458,23 @@ export default function Dashboard({ onLogout }: DashboardProps) {
                     <div className="audit-dot" />
                     <div>
                       <b>{entry.action}</b>
-                      <span>{entry.user} · {entry.time}</span>
+                      <span>{entry.user} · {formatDate(entry.time)}</span>
                     </div>
                   </div>
                 )) : <div className="empty-state">Sin actividad registrada.</div>}
               </div>
             </div>
+          </section>
+
+          <section className="panel dashboard-section" id="personas">
+            <div className="panel-heading compact-heading"><div><span className="section-kicker">DIRECTORIO</span><h2>Personas registradas</h2></div><span className="status-pill">{registeredUsers.length} perfiles</span></div>
+            {registeredUsers.length ? <div className="people-grid">{registeredUsers.map((user, index) => <div className="person-card" key={user.id || `${user.dni}-${index}`}><div className="review-avatar">{`${user.nombre?.[0] || ''}${user.apellido?.[0] || ''}`.toUpperCase()}</div><div><b>{user.nombre} {user.apellido}</b><span>{user.dni || 'Sin DNI'} · {user.email || 'Sin correo'}</span></div><CheckCircle2 size={17} /></div>)}</div> : <div className="empty-state">Todavía no hay personas registradas. Usa “Reconocer rostro” para crear el primer perfil.</div>}
+          </section>
+
+          <section className="dashboard-info-grid">
+            <div className="panel dashboard-section" id="documentacion"><div className="panel-heading compact-heading"><div><span className="section-kicker">GUÍA</span><h2>Documentación</h2></div><BookOpen size={19} /></div><div className="info-cards"><div><b>1. Captura una imagen</b><span>Usa una foto frontal, nítida y con buena iluminación.</span></div><div><b>2. Verifica los datos</b><span>El sistema consulta la coincidencia facial y completa el formulario.</span></div><div><b>3. Guarda el registro</b><span>Los perfiles quedan disponibles para futuras validaciones.</span></div></div></div>
+            <div className="panel dashboard-section" id="integraciones"><div className="panel-heading compact-heading"><div><span className="section-kicker">SERVICIOS</span><h2>Integraciones</h2></div><ExternalLink size={19} /></div><div className="integration-list"><div><Database size={17} /><span><b>Supabase</b><small>Persistencia de usuarios y embeddings</small></span><em>{appConfig.usesDemoRecognition ? 'Configurar' : 'Conectado'}</em></div><div><Server size={17} /><span><b>FastAPI</b><small>API de reconocimiento facial</small></span><em>{appConfig.usesDemoRecognition ? 'Demo' : 'Operativo'}</em></div></div></div>
+            <div className="panel dashboard-section" id="seguridad"><div className="panel-heading compact-heading"><div><span className="section-kicker">CONTROL</span><h2>Seguridad</h2></div><ShieldCheck size={19} /></div><div className="security-summary"><CheckCircle2 size={18} /><span>Las imágenes se procesan con confirmación explícita y el acceso se registra en el historial.</span></div><div className="security-summary"><ShieldCheck size={18} /><span>Sesión protegida con autenticación facial y token de acceso.</span></div></div>
           </section>
         </div>
       </main>

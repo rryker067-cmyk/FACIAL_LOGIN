@@ -42,7 +42,7 @@ export async function listUsers(): Promise<Array<PersonRecord & { id: string; em
   return requestJson('/api/v1/users', undefined, 'GET')
 }
 
-const authHeaders = () => {
+const authHeaders = (): Record<string, string> => {
   const token = localStorage.getItem('veris_access_token')
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
@@ -68,7 +68,7 @@ export async function verifyUserFace(userId: string, imagen_base64: string): Pro
   return requestJson(`/api/v1/users/${userId}/verify-face`, { imagen_base64 }, 'POST', authHeaders())
 }
 
-export async function updateUser(userId: string, data: Record<string, unknown>, verificationToken: string) {
+export async function updateUser(userId: string, data: Record<string, unknown>, verificationToken: string): Promise<Record<string, unknown>> {
   return requestJson(`/api/v1/users/${userId}`, data, 'PATCH', {
     ...authHeaders(),
     'X-Face-Verification-Token': verificationToken,

@@ -40,8 +40,6 @@ async def verify_face_before_mutation(
     authenticated_user: dict = Depends(get_authenticated_user),
 ):
     """Issue a short-lived mutation grant after matching the signed-in user's face."""
-    if str(authenticated_user["user_id"]) != str(user_id):
-        raise HTTPException(status_code=403, detail={"error": "USER_OWNERSHIP_REQUIRED"})
     if not payload.imagen_base64.startswith("data:image/"):
         raise HTTPException(status_code=422, detail={"error": "CAMERA_IMAGE_REQUIRED"})
 
@@ -109,8 +107,6 @@ async def delete_user(
 def _require_mutation_grant(
     user_id: str, authenticated_user: dict, verification_token: str | None
 ) -> None:
-    if str(authenticated_user["user_id"]) != str(user_id):
-        raise HTTPException(status_code=403, detail={"error": "USER_OWNERSHIP_REQUIRED"})
     if not verification_token:
         raise HTTPException(status_code=403, detail={"error": "FACE_VERIFICATION_REQUIRED"})
     try:

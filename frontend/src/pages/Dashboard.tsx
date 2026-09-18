@@ -26,10 +26,13 @@ import {
   Clock3,
   ExternalLink,
   Server,
+  Edit3,
+  Trash2,
+  Save,
 } from 'lucide-react'
 import Field from '../components/Field'
 import { appConfig } from '../config/env'
-import { DashboardStats, getDashboardStats, listUsers, recognizeFace } from '../services/recognitionApi'
+import { AuditEvent, DashboardStats, deleteUser, getDashboardStats, listAuditEvents, listUsers, recognizeFace, updateUser, verifyUserFace } from '../services/recognitionApi'
 import { emptyPerson, PersonRecord } from '../types/person'
 
 const navItems = [
@@ -89,10 +92,11 @@ const readStorage = <T,>(key: string, fallback: T): T => {
 }
 
 interface DashboardProps {
+  user: { name: string; role: string } | null;
   onLogout: () => void;
 }
 
-export default function Dashboard({ onLogout }: DashboardProps) {
+export default function Dashboard({ user, onLogout }: DashboardProps) {
   const [form, setForm] = useState<PersonRecord>(emptyPerson)
   const [preview, setPreview] = useState<string | null>(null)
   const [isCameraOpen, setIsCameraOpen] = useState(false)
@@ -109,15 +113,28 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   const [registrationConfidence, setRegistrationConfidence] = useState(0)
   const [documents, setDocuments] = useState<StoredDocument[]>([])
   const [documentError, setDocumentError] = useState<string | null>(null)
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([])
+  const [selectedUser, setSelectedUser] = useState<FacialUser | null>(null)
+  const [editForm, setEditForm] = useState<FacialUser | null>(null)
+  const [verificationToken, setVerificationToken] = useState<string | null>(null)
+  const [verifyCameraOpen, setVerifyCameraOpen] = useState(false)
+  const [verifyBusy, setVerifyBusy] = useState(false)
+  const [verifyError, setVerifyError] = useState<string | null>(null)
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
+  const verifyVideoRef = useRef<HTMLVideoElement>(null)
+  const verifyStreamRef = useRef<MediaStream | null>(null)
 
-  useEffect(() => () => streamRef.current?.getTracks().forEach((track) => track.stop()), [])
+  useEffect(() => () => {
+    streamRef.current?.getTracks().forEach((track) => track.stop())
+    verifyStreamRef.current?.getTracks().forEach((track) => track.stop())
+  }, [])
 
   useEffect(() => {
     const loadDashboardData = async () => {
       try {
-        const [users, stats] = await Promise.all([listUsers(), getDashboardStats()])
+        const [users, stats, events] = await Promise.all([listUsers(), getDashboardStats(), listAuditEvents()])
         setRegisteredUsers(users.map((user) => ({
           ...user,
           edad: String(user.edad ?? ''),
@@ -125,6 +142,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
           dni: user.dni || '',
         })))
         setDashboardStats(stats)
+        setAuditEvents(events)
         setValidationHistory(stats.recent_events.map((event) => ({
           name: event.recognized
             ? (users.find((user) => user.id === event.user_id)?.nombre || 'Rostro reconocido')
@@ -140,6 +158,96 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     }
     void loadDashboardData()
   }, [])
+
+  const closeVerifyCamera = () => {
+    verifyStreamRef.current?.getTracks().forEach((track) => track.stop())
+    verifyStreamRef.current = null
+    setVerifyCameraOpen(false)
+  }
+
+  const openUserVerification = (user: FacialUser) => {
+    setSelectedUser(user)
+    setEditForm({ ...user })
+    setVerificationToken(null)
+    setVerifyError(null)
+    setVerifyCameraOpen(false)
+  }
+
+  const startVerifyCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: 'user' } })
+      verifyStreamRef.current = stream
+      setVerifyCameraOpen(true)
+      window.setTimeout(() => {
+        if (verifyVideoRef.current) verifyVideoRef.current.srcObject = stream
+      }, 0)
+    } catch {
+      setVerifyError('No se pudo acceder a la cámara para confirmar la identidad.')
+    }
+  }
+
+  const verifySelectedUser = async () => {
+    if (!selectedUser?.id || !verifyVideoRef.current) return
+    const video = verifyVideoRef.current
+    if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+      setVerifyError('La cámara todavía no está lista.')
+      return
+    }
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth || 640
+    canvas.height = video.videoHeight || 480
+    const context = canvas.getContext('2d')
+    if (!context) return
+    context.save()
+    context.translate(canvas.width, 0)
+    context.scale(-1, 1)
+    context.drawImage(video, 0, 0, canvas.width, canvas.height)
+    context.restore()
+    setVerifyBusy(true)
+    setVerifyError(null)
+    try {
+      const result = await verifyUserFace(selectedUser.id, canvas.toDataURL('image/jpeg', 0.92))
+      setVerificationToken(result.verification_token)
+      closeVerifyCamera()
+    } catch (error: any) {
+      setVerifyError(error?.message || 'El rostro no coincide con el perfil seleccionado.')
+    } finally {
+      setVerifyBusy(false)
+    }
+  }
+
+  const saveSelectedUser = async () => {
+    if (!selectedUser?.id || !editForm || !verificationToken) return
+    try {
+      const updated = await updateUser(selectedUser.id, {
+        nombre: editForm.nombre,
+        apellido: editForm.apellido,
+        edad: Number(editForm.edad) || null,
+        dni: editForm.dni,
+        telefono: editForm.telefono,
+        email: editForm.email || null,
+      }, verificationToken)
+      setRegisteredUsers((current) => current.map((item) => item.id === selectedUser.id ? { ...item, ...updated } : item))
+      setSelectedUser((current) => current ? { ...current, ...updated } : current)
+      setEditForm((current) => current ? { ...current, ...updated } : current)
+      setRecognitionNotice('Datos actualizados correctamente.')
+    } catch (error: any) {
+      setVerifyError(error?.message || 'No se pudieron actualizar los datos.')
+    }
+  }
+
+  const removeSelectedUser = async () => {
+    if (!selectedUser?.id || !verificationToken || !window.confirm(`¿Eliminar a ${selectedUser.nombre} ${selectedUser.apellido}?`)) return
+    try {
+      await deleteUser(selectedUser.id, verificationToken)
+      setRegisteredUsers((current) => current.filter((item) => item.id !== selectedUser.id))
+      setSelectedUser(null)
+      setEditForm(null)
+      setRecognitionNotice('Perfil eliminado correctamente.')
+    } catch (error: any) {
+      setVerifyError(error?.message || 'No se pudo eliminar el perfil.')
+    }
+  }
 
   useEffect(() => {
     loadDocuments().then(setDocuments).catch(() => setDocumentError('No se pudo cargar la documentación guardada.'))
@@ -322,6 +430,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   const recognitionRate = dashboardStats?.recognition_rate ?? (validationHistory.length
     ? Math.round((recognizedCount / validationHistory.length) * 100)
     : 0)
+  const alerts = auditEvents.filter((event) => !event.success)
   const chartValues = Array.from({ length: 7 }, (_, index) => {
     const day = new Date()
     day.setDate(day.getDate() - (6 - index))
@@ -403,12 +512,12 @@ export default function Dashboard({ onLogout }: DashboardProps) {
           <div className="topbar-search"><Search size={17} /><input aria-label="Buscar" placeholder="Buscar en el registro..." /></div>
           <div className="topbar-actions">
             <button className="icon-button" aria-label="Ayuda"><CircleHelp size={19} /></button>
-            <button className="icon-button notification-button" aria-label="Notificaciones"><Bell size={19} /><i /></button>
+            <button className="icon-button notification-button" aria-label="Notificaciones" onClick={() => setNotificationsOpen((current) => !current)}><Bell size={19} />{alerts.length > 0 && <i />}</button>
             
             {/* Botón de perfil con cierre de sesión integrado */}
             <div className="profile" onClick={onLogout} title="Hacer clic para cerrar sesión" style={{ cursor: 'pointer' }}>
-              <div className="profile-avatar">AM</div>
-              <div><b>Andrea M.</b><span>Administradora (Salir)</span></div>
+              <div className="profile-avatar">{(user?.name || 'U').split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase()}</div>
+              <div><b>{user?.name || 'Usuario'}</b><span>{user?.role || 'Sesión activa'} (Salir)</span></div>
               <ChevronDown size={15} />
             </div>
           </div>
@@ -610,16 +719,17 @@ export default function Dashboard({ onLogout }: DashboardProps) {
               </div>
 
               <div className="history-list">
-                {validationHistory.length ? validationHistory.map((row) => (
-                  <div className="history-item" key={row.name}>
+                {auditEvents.length ? auditEvents.map((row) => (
+                  <div className="history-item" key={row.id}>
                     <div className="history-name">
-                      <div className="mini-avatar">{row.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</div>
+                      <div className={`mini-avatar ${row.success ? '' : 'mini-avatar--failed'}`}>{row.success ? 'OK' : '!'}</div>
                       <div>
-                        <b>{row.name}</b>
-                        <span>{formatDate(row.time)}</span>
+                        <b>{row.event_type} · {row.source}</b>
+                        <span>{row.message || (row.success ? 'Operación correcta' : row.error_code || 'Intento fallido')} · {row.success ? 'Exitoso' : 'Fallido'} · Usuario: {row.user_id || 'no identificado'} · {formatDate(row.created_at)}</span>
+                        {row.metadata && <small className="history-metadata">{JSON.stringify(row.metadata)}</small>}
                       </div>
                     </div>
-                    <strong>{row.match}</strong>
+                    <strong className={row.success ? '' : 'history-result--failed'}>{row.similarity == null ? '—' : `${Math.round(row.similarity * 100)}%`}</strong>
                   </div>
                 )) : <div className="empty-state">El historial aparecerá después de la primera validación.</div>}
               </div>
@@ -649,8 +759,18 @@ export default function Dashboard({ onLogout }: DashboardProps) {
 
           <section className={`panel dashboard-section ${activeSection === 'personas' ? '' : 'dashboard-section-hidden'}`} id="personas">
             <div className="panel-heading compact-heading"><div><span className="section-kicker">DIRECTORIO</span><h2>Personas registradas</h2></div><span className="status-pill">{registeredUsers.length} perfiles</span></div>
-            {registeredUsers.length ? <div className="people-grid">{registeredUsers.map((user, index) => <div className="person-card" key={user.id || `${user.dni}-${index}`}><div className="review-avatar">{`${user.nombre?.[0] || ''}${user.apellido?.[0] || ''}`.toUpperCase()}</div><div><b>{user.nombre} {user.apellido}</b><span>{user.dni || 'Sin DNI'} · {user.email || 'Sin correo'}</span></div><CheckCircle2 size={17} /></div>)}</div> : <div className="empty-state">Todavía no hay personas registradas. Usa “Reconocer rostro” para crear el primer perfil.</div>}
+            {registeredUsers.length ? <div className="people-grid">{registeredUsers.map((user, index) => <button className="person-card person-card--interactive" type="button" key={user.id || `${user.dni}-${index}`} onClick={() => openUserVerification(user)}><div className="person-photo">{user.imagen_url ? <img src={user.imagen_url} alt={`Foto de ${user.nombre} ${user.apellido}`} /> : <span>{`${user.nombre?.[0] || ''}${user.apellido?.[0] || ''}`.toUpperCase()}</span>}</div><div><b>{user.nombre} {user.apellido}</b><span>{user.dni || 'Sin DNI'} · {user.email || 'Sin correo'}</span></div><Edit3 size={17} /></button>)}</div> : <div className="empty-state">Todavía no hay personas registradas. Usa “Reconocer rostro” para crear el primer perfil.</div>}
           </section>
+
+          {selectedUser && <div className="user-editor-backdrop" role="presentation" onClick={() => { closeVerifyCamera(); setSelectedUser(null) }}>
+            <section className="user-editor panel" role="dialog" aria-modal="true" aria-labelledby="user-editor-title" onClick={(event) => event.stopPropagation()}>
+              <div className="panel-heading compact-heading"><div><span className="section-kicker">CONTROL FACIAL</span><h2 id="user-editor-title">Confirmar identidad</h2></div><button className="icon-button" type="button" aria-label="Cerrar" onClick={() => { closeVerifyCamera(); setSelectedUser(null) }}><X size={18} /></button></div>
+              <div className="selected-user-summary"><div className="person-photo person-photo--large">{selectedUser.imagen_url ? <img src={selectedUser.imagen_url} alt="Foto registrada" /> : <span>{`${selectedUser.nombre?.[0] || ''}${selectedUser.apellido?.[0] || ''}`.toUpperCase()}</span>}</div><div><b>{selectedUser.nombre} {selectedUser.apellido}</b><span>Compara tu rostro con la foto registrada para continuar.</span></div></div>
+              {!verificationToken ? <div className="verification-stage">{verifyCameraOpen ? <><video ref={verifyVideoRef} autoPlay playsInline muted /><div className="video-focus" /><button className="button button--primary" type="button" onClick={() => void verifySelectedUser()} disabled={verifyBusy}>{verifyBusy ? 'Validando...' : <><ScanFace size={16} /> Confirmar rostro</>}</button></> : <button className="button button--dark" type="button" onClick={() => void startVerifyCamera()}><Camera size={16} /> Escanear para editar</button>}</div> : <div className="verified-notice"><CheckCircle2 size={18} /> Identidad confirmada. Puedes editar o eliminar este perfil.</div>}
+              {verifyError && <p className="recognition-error" role="alert">{verifyError}</p>}
+              {verificationToken && editForm && <div className="editor-form"><div className="form-grid"><Field label="Nombre" placeholder="Nombre" value={editForm.nombre} onChange={(value) => setEditForm({ ...editForm, nombre: value })} /><Field label="Apellido" placeholder="Apellido" value={editForm.apellido} onChange={(value) => setEditForm({ ...editForm, apellido: value })} /><Field label="Edad" placeholder="Edad" value={editForm.edad} onChange={(value) => setEditForm({ ...editForm, edad: value })} type="number" /><Field label="DNI" placeholder="DNI" value={editForm.dni} onChange={(value) => setEditForm({ ...editForm, dni: value })} /><Field wide label="Correo electrónico" placeholder="correo@empresa.com" value={editForm.email || ''} onChange={(value) => setEditForm({ ...editForm, email: value })} /><Field wide label="Teléfono" placeholder="Teléfono" value={editForm.telefono} onChange={(value) => setEditForm({ ...editForm, telefono: value })} /></div><div className="editor-actions"><button className="button button--outline button--danger" type="button" onClick={() => void removeSelectedUser()}><Trash2 size={16} /> Eliminar</button><button className="button button--primary" type="button" onClick={() => void saveSelectedUser()}><Save size={16} /> Guardar cambios</button></div></div>}
+            </section>
+          </div>}
 
           <section className={`dashboard-info-grid ${activeSection !== 'documentacion' && activeSection !== 'integraciones' && activeSection !== 'seguridad' ? 'dashboard-section-hidden' : ''}`}>
             <div className={`panel dashboard-section ${activeSection === 'documentacion' ? '' : 'dashboard-section-hidden'}`} id="documentacion">
@@ -668,6 +788,10 @@ export default function Dashboard({ onLogout }: DashboardProps) {
           </section>
         </div>
       </main>
+      {notificationsOpen && <aside className="notifications-drawer" aria-label="Alertas del sistema">
+        <div className="notifications-heading"><div><span className="section-kicker">CENTRO DE ALERTAS</span><h2>Alertas presentadas</h2></div><button className="icon-button" type="button" aria-label="Cerrar alertas" onClick={() => setNotificationsOpen(false)}><X size={18} /></button></div>
+        {alerts.length ? <div className="notifications-list">{alerts.map((event) => <div className="notification-item" key={event.id}><span className="notification-icon"><Bell size={15} /></span><div><b>{event.event_type} · {event.source}</b><span>{event.message || event.error_code || 'Intento fallido registrado'}</span><small>{formatDate(event.created_at)}</small></div></div>)}</div> : <div className="empty-state">No hay alertas registradas.</div>}
+      </aside>}
     </div>
   )
 }

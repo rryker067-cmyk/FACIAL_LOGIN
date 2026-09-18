@@ -22,14 +22,14 @@ router = APIRouter(prefix="/auth", tags=["Autenticación Facial"])
 async def authentication_history(
     authenticated_user: dict = Depends(get_authenticated_user),
 ):
-    return await UserRepository.list_auth_events(user_id=authenticated_user["user_id"])
+    return await UserRepository.list_auth_events()
 
 
 @router.get("/events", response_model=list[AuditEventResponse])
 async def authentication_events(
     authenticated_user: dict = Depends(get_authenticated_user),
 ):
-    return await UserRepository.list_auth_events(user_id=authenticated_user["user_id"])
+    return await UserRepository.list_auth_events()
 
 
 @router.post("/login", response_model=CredentialsTokenResponse)

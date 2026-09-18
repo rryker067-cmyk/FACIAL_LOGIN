@@ -183,7 +183,10 @@ export default function Dashboard({ onLogout }: DashboardProps) {
 
   const openCamera = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true })
+      setRecognitionError(null)
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 640, height: 480, facingMode: 'user' },
+      })
       streamRef.current = stream
       setIsCameraOpen(true)
       window.setTimeout(() => {
@@ -191,6 +194,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
       }, 0)
     } catch {
       setIsCameraOpen(false)
+      setRecognitionError('No se pudo acceder a la cámara. Verifica los permisos del navegador.')
     }
   }
 
@@ -206,7 +210,16 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     const canvas = document.createElement('canvas')
     canvas.width = video.videoWidth || 640
     canvas.height = video.videoHeight || 480
-    canvas.getContext('2d')?.drawImage(video, 0, 0, canvas.width, canvas.height)
+    const context = canvas.getContext('2d')
+    if (!context) {
+      setRecognitionError('No se pudo preparar la captura de la cámara.')
+      return
+    }
+    context.save()
+    context.translate(canvas.width, 0)
+    context.scale(-1, 1)
+    context.drawImage(video, 0, 0, canvas.width, canvas.height)
+    context.restore()
     const image = canvas.toDataURL('image/jpeg', 0.9)
     setPreview(image)
     closeCamera()
@@ -219,7 +232,18 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     setRecognitionError(null)
     try {
       const result = await recognizeFace(image)
-      setForm(result)
+      const recognizedPerson: PersonRecord = {
+        ...emptyPerson,
+        nombre: result.nombre,
+        apellido: result.apellido,
+        edad: result.edad,
+        dni: result.dni,
+        telefono: result.telefono,
+        email: result.email || '',
+        imagen_url: result.imagen_url || '',
+        similarity: result.similarity || '0',
+      }
+      setForm(recognizedPerson)
       const match = Math.min(100, Math.max(0, Number.parseFloat(result.similarity || '0') * 100))
       const isAcceptedMatch = Boolean(result.nombre) && match >= 75
       setRecognitionNotice(isAcceptedMatch ? null : 'No se encontró al usuario en la base de datos.')
@@ -399,11 +423,11 @@ export default function Dashboard({ onLogout }: DashboardProps) {
           </div>
 
           <section className={`recognition-grid ${activeSection === 'reconocer' ? '' : 'dashboard-section-hidden'}`} id="reconocer">
-            <div className="panel capture-panel"><div className="panel-heading"><div><span className="section-kicker">PASO 01</span><h2>Imagen de identificación</h2></div><span className="secure-badge"><ShieldCheck size={14} /> Privada</span></div>
+            <div className="panel capture-panel"><div className="panel-heading"><div><span className="section-kicker">PASO 01</span><h2>Imagen de identificación</h2></div><div className="dashboard-camera-switch"><span>{isCameraOpen ? 'ON' : 'OFF'}</span><button type="button" className={`camera-toggle-switch ${isCameraOpen ? 'active' : ''}`} onClick={isCameraOpen ? closeCamera : () => void openCamera()} aria-label={isCameraOpen ? 'Apagar cámara' : 'Encender cámara'}><span className="switch-thumb" /></button></div></div>
               <div className={`capture-stage ${preview ? 'capture-stage--preview' : ''} ${isCameraOpen ? 'capture-stage--camera' : ''}`}>
                 {isCameraOpen ? (
                   <>
-                    <video ref={videoRef} autoPlay playsInline muted />
+                    <video ref={videoRef} autoPlay playsInline muted className="dashboard-camera-video" />
                     <div className="video-focus" />
                     <div className="camera-inline-controls">
                       <button className="button button--primary" onClick={capturePhoto}><Camera size={17} /> Capturar</button>

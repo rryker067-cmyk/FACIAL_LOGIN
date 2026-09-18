@@ -332,9 +332,9 @@ button { border: 0; }
   background: linear-gradient(180deg, #edf5ff 0%, #f4f8fb 100%);
 }
 .capture-stage--camera {
-  background: #0e1727;
+  background: #000;
   border-style: solid;
-  border-color: rgba(95, 168, 255, 0.25);
+  border-color: rgba(16, 185, 129, 0.35);
 }
 .capture-stage video {
   width: 100%;
@@ -343,12 +343,46 @@ button { border: 0; }
   display: block;
   background: #0e1727;
 }
+.dashboard-camera-video { transform: scaleX(-1); }
 .video-focus {
   position: absolute;
-  inset: 19% 26%;
-  border: 2px solid rgba(95, 168, 255, 0.9);
+  inset: 12% 28%;
+  border: 2px solid rgba(16, 185, 129, 0.9);
   border-radius: 45%;
-  box-shadow: 0 0 0 999px rgba(14, 23, 39, 0.45);
+  box-shadow: 0 0 0 999px rgba(3, 7, 18, 0.52);
+}
+.dashboard-camera-switch {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #637b8d;
+  font: 700 9px 'DM Mono', monospace;
+}
+.dashboard-camera-switch .camera-toggle-switch {
+  width: 36px;
+  height: 20px;
+  padding: 0;
+  position: relative;
+  border: 0;
+  border-radius: 10px;
+  background: #374151;
+  cursor: pointer;
+  transition: background-color .2s;
+}
+.dashboard-camera-switch .camera-toggle-switch.active { background: #10b981; }
+.dashboard-camera-switch .switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform .2s;
+}
+.dashboard-camera-switch .camera-toggle-switch.active .switch-thumb { transform: translateX(16px); }
+.dashboard-camera-switch .camera-toggle-switch {
+  flex: 0 0 auto;
 }
 .camera-inline-controls {
   position: absolute;

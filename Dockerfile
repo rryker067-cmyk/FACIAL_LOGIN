@@ -32,7 +32,7 @@ COPY . .
 
 RUN mkdir -p /app/backend/app/models && \
     if [ ! -s /app/backend/app/models/face_recognition.onnx ]; then \
-      python -c "import io, pathlib, urllib.request, zipfile; target=pathlib.Path('/app/backend/app/models/face_recognition.onnx'); data=urllib.request.urlopen('https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip').read(); archive=zipfile.ZipFile(io.BytesIO(data)); target.write_bytes(archive.read('w600k_r50.onnx'))"; \
+      python -c "import pathlib, shutil, urllib.request, zipfile; target=pathlib.Path('/app/backend/app/models/face_recognition.onnx'); archive_path=target.with_suffix('.zip'); shutil.copyfileobj(urllib.request.urlopen('https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_s.zip'), archive_path.open('wb')); archive=zipfile.ZipFile(archive_path); target.write_bytes(archive.read('w600k_mbf.onnx')); archive_path.unlink()"; \
     fi && \
     test -s /app/backend/app/models/face_recognition.onnx
 

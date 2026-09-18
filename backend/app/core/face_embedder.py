@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-import io
+import shutil
 import urllib.request
 import zipfile
 
@@ -12,7 +12,8 @@ from fastapi import HTTPException, status
 
 class FaceEmbedder:
     EMBEDDING_DIMENSION = 512
-    MODEL_URL = "https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip"
+    MODEL_URL = "https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_s.zip"
+    MODEL_ARCHIVE_NAME = "w600k_mbf.onnx"
 
     def __init__(self, model_path: str | None = None):
         if model_path is None:
@@ -43,20 +44,25 @@ class FaceEmbedder:
 
         model_path.parent.mkdir(parents=True, exist_ok=True)
         temporary_path = model_path.with_suffix(".download")
+        archive_path = model_path.with_suffix(".zip")
         try:
             with urllib.request.urlopen(self.MODEL_URL, timeout=120) as response:
-                archive_data = response.read()
-            with zipfile.ZipFile(io.BytesIO(archive_data)) as archive:
-                model_data = archive.read("w600k_r50.onnx")
+                with archive_path.open("wb") as archive_file:
+                    shutil.copyfileobj(response, archive_file)
+            with zipfile.ZipFile(archive_path) as archive:
+                model_data = archive.read(self.MODEL_ARCHIVE_NAME)
             temporary_path.write_bytes(model_data)
             if temporary_path.stat().st_size == 0:
                 raise RuntimeError("La descarga del modelo facial produjo un archivo vacío.")
             temporary_path.replace(model_path)
         except Exception as err:
             temporary_path.unlink(missing_ok=True)
+            archive_path.unlink(missing_ok=True)
             raise RuntimeError(
                 f"No se pudo descargar el modelo facial ONNX desde {self.MODEL_URL}: {err}"
             ) from err
+        finally:
+            archive_path.unlink(missing_ok=True)
 
     def extract_embedding(self, cv2_image: np.ndarray) -> list[float]:
         try:

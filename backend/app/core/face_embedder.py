@@ -21,6 +21,9 @@ class FaceEmbedder:
         self.model_path = model_path
         self.session = None
         self.input_name = None
+        self.face_detector = cv2.CascadeClassifier(
+            str(Path(cv2.data.haarcascades) / "haarcascade_frontalface_default.xml")
+        )
 
         self._ensure_model()
         if os.path.exists(model_path):
@@ -36,6 +39,28 @@ class FaceEmbedder:
                 providers=['CPUExecutionProvider']
             )
             self.input_name = self.session.get_inputs()[0].name
+
+    def _crop_face(self, image: np.ndarray) -> np.ndarray:
+        """Crop the largest detected face while retaining a small alignment margin."""
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        faces = self.face_detector.detectMultiScale(
+            gray,
+            scaleFactor=1.1,
+            minNeighbors=5,
+            minSize=(60, 60),
+        )
+        if len(faces) == 0:
+            return image
+
+        x, y, width, height = max(faces, key=lambda box: box[2] * box[3])
+        margin_x = int(width * 0.25)
+        margin_y = int(height * 0.35)
+        left = max(0, x - margin_x)
+        top = max(0, y - margin_y)
+        right = min(image.shape[1], x + width + margin_x)
+        bottom = min(image.shape[0], y + height + margin_y)
+        cropped = image[top:bottom, left:right]
+        return cropped if cropped.size else image
 
     def _ensure_model(self) -> None:
         model_path = Path(self.model_path)
@@ -66,7 +91,8 @@ class FaceEmbedder:
 
     def extract_embedding(self, cv2_image: np.ndarray) -> list[float]:
         try:
-            resized = cv2.resize(cv2_image, (112, 112))
+            face_image = self._crop_face(cv2_image)
+            resized = cv2.resize(face_image, (112, 112))
             rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
 
             if self.session is not None and self.input_name is not None:

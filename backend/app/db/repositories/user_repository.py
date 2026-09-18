@@ -14,6 +14,45 @@ logger = logging.getLogger(__name__)
 class UserRepository:
 
     @staticmethod
+    async def find_by_identity(email: str | None, dni: str | None) -> dict | None:
+        if not email and not dni:
+            return None
+
+        try:
+            if supabase is None:
+                normalized_email = email.strip().lower() if email else None
+                normalized_dni = dni.strip() if dni else None
+                return next(
+                    (
+                        user for user in _MEMORY_USERS
+                        if (normalized_email and str(user.get("email", "")).lower() == normalized_email)
+                        or (normalized_dni and str(user.get("dni", "")) == normalized_dni)
+                    ),
+                    None,
+                )
+
+            if email:
+                response = supabase.table("usuarios").select("id").ilike(
+                    "email", email.strip()
+                ).limit(1).execute()
+                if response.data:
+                    return response.data[0]
+
+            if dni:
+                response = supabase.table("usuarios").select("id").eq(
+                    "dni", dni.strip()
+                ).limit(1).execute()
+                if response.data:
+                    return response.data[0]
+
+            return None
+        except Exception as err:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error verificando identidad existente: {str(err)}",
+            )
+
+    @staticmethod
     async def upload_avatar(base64_image: str) -> str:
         try:
             if supabase is None:

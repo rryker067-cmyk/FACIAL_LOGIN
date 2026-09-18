@@ -238,6 +238,12 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
         onSuccess({ name: newUserData.name, role: newUserData.role });
       }, 1800);
     } catch (error: any) {
+      if (error?.code === 'USER_ALREADY_REGISTERED' || error?.status === 409) {
+        setDuplicateNotice(true);
+        setStatus('error');
+        setMessage('Este usuario ya está registrado. Inicie sesión.');
+        return;
+      }
       setStatus('error');
       setMessage(error?.message || 'No se pudo guardar el registro en Supabase. Revisa la configuración del backend.');
     }

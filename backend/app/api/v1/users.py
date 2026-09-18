@@ -1,4 +1,4 @@
-from fastapi import APIRouter, status
+from fastapi import APIRouter, HTTPException, status
 from fastapi.concurrency import run_in_threadpool
 
 from backend.app.core.face_embedder import face_embedder
@@ -20,6 +20,34 @@ async def register_user(payload: UserRegisterRequest):
         face_embedder.extract_embedding,
         cv2_img
     )
+
+    existing_match = await UserRepository.find_best_face_match(
+        query_embedding=embedding,
+        threshold=0.75,
+    )
+    if existing_match:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error": "USER_ALREADY_REGISTERED",
+                "message": "Este rostro ya está registrado. Inicie sesión.",
+                "user_id": str(existing_match["id"]),
+                "similarity": float(existing_match.get("similarity", 0)),
+            },
+        )
+
+    existing_identity = await UserRepository.find_by_identity(
+        email=payload.email,
+        dni=payload.dni,
+    )
+    if existing_identity:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error": "USER_ALREADY_REGISTERED",
+                "message": "El correo o DNI ya está registrado. Inicie sesión.",
+            },
+        )
 
     avatar_url = await UserRepository.upload_avatar(payload.imagen_base64)
 

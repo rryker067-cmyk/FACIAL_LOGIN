@@ -32,6 +32,7 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
   const [matchedUser, setMatchedUser] = useState<any>(null);
   const [faceMatch, setFaceMatch] = useState(0);
   const [registrationConfidence, setRegistrationConfidence] = useState(0);
+  const [duplicateNotice, setDuplicateNotice] = useState(false);
 
   useEffect(() => {
     if (!cameraActive) {
@@ -66,10 +67,6 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
         videoRef.current.srcObject = mediaStream;
       }
 
-      // Si estamos en modo login, activamos el escaneo automático en tiempo real a los 1.5 segundos
-      if (mode === 'login' && !capturedImage) {
-        runRealtimeLoginDetection();
-      }
     } catch (err) {
       console.error('Error al acceder a la cámara:', err);
       setMessage('No se pudo acceder a la cámara. Verifique los permisos.');
@@ -110,13 +107,18 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
     return 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150';
   };
 
-  // Detección automática en tiempo real para Iniciar Sesión
-  const runRealtimeLoginDetection = () => {
+  const runLoginScan = () => {
+    if (!cameraActive) {
+      setStatus('error');
+      setMessage('Encienda la cámara para escanear el rostro.');
+      return;
+    }
+
     setScanning(true);
     setStatus('scanning');
-    setMessage('Escaneando rostro en tiempo real...');
+    setMessage('Escaneando rostro...');
 
-    setTimeout(async () => {
+    window.setTimeout(async () => {
       try {
         setScanning(false);
         const snapshotUrl = captureSnapshot();
@@ -146,11 +148,9 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
         }, 2000);
       } catch (error: any) {
         if (error?.code === 'FACE_NOT_RECOGNIZED' || error?.status === 401) {
-          setMode('register');
-          setCameraActive(false);
           setScanning(false);
           setStatus('error');
-          setMessage('No reconocimos este rostro. Completa tus datos y guarda el registro para poder iniciar sesión la próxima vez.');
+          setMessage('No reconocimos este rostro. Verifica la imagen o cambia a Registrarse.');
           return;
         }
 
@@ -183,7 +183,13 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
       return;
     }
 
-    const imageToSave = capturedImage || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150';
+    if (!capturedImage) {
+      setMessage('Tome una fotografía antes de guardar el registro.');
+      setStatus('error');
+      return;
+    }
+
+    const imageToSave = capturedImage;
     const newUserData = {
       name: registerName.trim(),
       email: registerEmail.trim(),
@@ -195,6 +201,21 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
     };
 
     try {
+      try {
+        const existingMatch = await loginWithFace(imageToSave);
+        const existingSimilarity = Number.parseFloat(existingMatch.match_percentage) || 0;
+        if (existingSimilarity >= 75) {
+          setDuplicateNotice(true);
+          setStatus('error');
+          setMessage('Este rostro ya está registrado. Inicie sesión.');
+          return;
+        }
+      } catch (error: any) {
+        if (error?.status !== 401 && error?.code !== 'FACE_NOT_RECOGNIZED') {
+          throw error;
+        }
+      }
+
       const response = await registerUserWithFace({
         nombre: registerName.trim().split(' ')[0] || registerName.trim(),
         apellido: registerName.trim().split(' ').slice(1).join(' ') || 'Registrado',
@@ -242,14 +263,14 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
         <div className="facial-tabs">
           <button 
             type="button" 
-            onClick={() => { setMode('login'); setCapturedImage(null); setMessage(''); setStatus('idle'); }}
+            onClick={() => { setMode('login'); setCapturedImage(null); setDuplicateNotice(false); setMessage(''); setStatus('idle'); }}
             className={`facial-tab-btn ${mode === 'login' ? 'active' : ''}`}
           >
             <LogIn size={14} /> Iniciar Sesión
           </button>
           <button 
             type="button" 
-            onClick={() => { setMode('register'); setCapturedImage(null); setMessage(''); setStatus('idle'); }}
+            onClick={() => { setMode('register'); setCapturedImage(null); setDuplicateNotice(false); setMessage(''); setStatus('idle'); }}
             className={`facial-tab-btn ${mode === 'register' ? 'active' : ''}`}
           >
             <UserPlus size={14} /> Registrarse
@@ -352,7 +373,7 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
             )}
             
             <p className="facial-cam-legend">
-              {mode === 'login' ? '⚡ Detección automática en tiempo real' : 'Capture su foto para el registro biométrico.'}
+              {mode === 'login' ? 'Pulsa “Escanear ahora” para verificar el rostro.' : 'Capture su foto para el registro biométrico.'}
             </p>
           </div>
 
@@ -372,8 +393,8 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
 
             {mode === 'login' && (
               <div className="realtime-info-banner">
-                <Zap size={14} className="text-emerald-400 animate-pulse" />
-                <span>Buscando coincidencia facial en vivo...</span>
+                <Zap size={14} className="text-emerald-400" />
+                <span>La cámara está lista. El escaneo es manual.</span>
               </div>
             )}
 
@@ -454,6 +475,11 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
                   <ShieldCheck size={16} /> Guardar registro
                 </button>
               )}
+              {mode === 'login' && (
+                <button type="button" onClick={runLoginScan} className="facial-save-btn" disabled={scanning}>
+                  <ShieldCheck size={16} /> {scanning ? 'Escaneando...' : 'Escanear ahora'}
+                </button>
+              )}
             </div>
 
           </div>
@@ -461,6 +487,16 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
         </div>
 
       </div>
+      {duplicateNotice && (
+        <div className="facial-duplicate-toast" role="alert">
+          <CheckCircle size={20} />
+          <div>
+            <strong>Usuario detectado</strong>
+            <span>Este usuario ya está registrado, inicie sesión.</span>
+          </div>
+          <button type="button" onClick={() => setDuplicateNotice(false)} aria-label="Cerrar aviso"><X size={16} /></button>
+        </div>
+      )}
     </div>
   );
 }

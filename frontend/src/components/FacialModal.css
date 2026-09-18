@@ -24,6 +24,60 @@
   animation: modalFadeIn 0.3s ease-out;
 }
 
+.facial-duplicate-toast {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 1100;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  width: min(380px, calc(100vw - 2rem));
+  padding: 1rem 1.1rem;
+  color: #d1fae5;
+  background: #0b1120;
+  border: 1px solid rgba(16, 185, 129, 0.55);
+  border-left: 4px solid #10b981;
+  border-radius: 0.85rem;
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.45);
+  animation: facialToastIn 0.25s ease-out;
+}
+
+.facial-duplicate-toast > svg {
+  flex: 0 0 auto;
+  color: #34d399;
+}
+
+.facial-duplicate-toast div {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.facial-duplicate-toast strong {
+  color: #ffffff;
+  font-size: 0.85rem;
+}
+
+.facial-duplicate-toast span {
+  color: #a7f3d0;
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
+.facial-duplicate-toast button {
+  margin-left: auto;
+  padding: 0.15rem;
+  color: #9ca3af;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+@keyframes facialToastIn {
+  from { opacity: 0; transform: translateY(0.75rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 @keyframes modalFadeIn {
   from { opacity: 0; transform: scale(0.95); }
   to { opacity: 1; transform: scale(1); }

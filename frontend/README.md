@@ -15,8 +15,9 @@ npm run dev
 Copia `frontend/.env.example` como `frontend/.env.local` y define `VITE_API_URL`
 para conectar FastAPI. En producción debe apuntar a la URL pública del backend,
 por ejemplo `https://reconocimiento-facial-wgp4.onrender.com/api`. Vite no lee
-el `.env` de la raíz cuando se ejecuta desde `frontend/`. Sin esa variable, el
-frontend funciona en modo demo para validar la experiencia.
+el `.env` de la raíz cuando se ejecuta desde `frontend/`. Sin esa variable, las
+operaciones de reconocimiento fallan explícitamente y no se generan datos
+simulados.
 
 ## Estructura
 

@@ -13,6 +13,8 @@ npm run dev
 ```
 
 Consulta la arquitectura, el contrato de FastAPI y las variables de entorno en [frontend/README.md](frontend/README.md).
+La documentación técnica completa está en
+[docs/documentacion-completa.md](docs/documentacion-completa.md).
 
 ## Autenticación y Supabase
 

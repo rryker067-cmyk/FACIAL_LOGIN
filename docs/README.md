@@ -19,3 +19,9 @@ La aplicación combina un backend en FastAPI con un frontend en React para un si
 - Backend: `backend/app/main.py`
 - Frontend: `frontend/src/main.tsx`
 - Variables de entorno: `.env.example` y `frontend/.env.example`
+
+## Documentación completa
+
+La guía técnica, el modelo de datos, los endpoints, los flujos de cámara,
+Supabase, despliegue, seguridad y fases de mantenimiento están documentados en
+[documentacion-completa.md](documentacion-completa.md).

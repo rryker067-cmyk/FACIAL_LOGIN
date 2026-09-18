@@ -202,16 +202,18 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     canvas.width = video.videoWidth || 640
     canvas.height = video.videoHeight || 480
     canvas.getContext('2d')?.drawImage(video, 0, 0, canvas.width, canvas.height)
-    setPreview(canvas.toDataURL('image/jpeg', 0.9))
+    const image = canvas.toDataURL('image/jpeg', 0.9)
+    setPreview(image)
     closeCamera()
+    void recognizeFaceFromImage(image)
   }
 
-  const recognizeFaceFromImage = async () => {
-    if (!preview) return
+  const recognizeFaceFromImage = async (image = preview) => {
+    if (!image) return
     setIsRecognizing(true)
     setRecognitionError(null)
     try {
-      const result = await recognizeFace(preview)
+      const result = await recognizeFace(image)
       setForm(result)
       const match = Math.min(100, Math.max(0, Number.parseFloat(result.similarity || '0') * 100))
       const isAcceptedMatch = Boolean(result.nombre) && match >= 75
@@ -300,6 +302,26 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     return Number.isNaN(date.getTime()) ? value : date.toLocaleString('es-PE', { dateStyle: 'short', timeStyle: 'short' })
   }
 
+  const tabContext: Record<string, { eyebrow: string; title: string; description: string; steps: string[] }> = {
+    resumen: { eyebrow: 'OPERACIONES / IDENTIDAD', title: 'Resumen operativo', description: 'Supervisa el estado de la identidad biométrica y la actividad reciente.', steps: ['Actividad', 'Rendimiento', 'Resumen'] },
+    reconocer: { eyebrow: 'OPERACIONES / RECONOCIMIENTO', title: 'Reconocer un rostro', description: 'Captura una imagen y compárala con los perfiles almacenados en Supabase.', steps: ['Capturar imagen', 'Verificar datos', 'Resultado'] },
+    personas: { eyebrow: 'DIRECTORIO / SUPABASE', title: 'Personas registradas', description: 'Consulta los perfiles biométricos que existen actualmente en la base de datos.', steps: ['Consultar perfiles', 'Revisar datos', 'Directorio'] },
+    historial: { eyebrow: 'AUDITORÍA / VALIDACIONES', title: 'Historial de validaciones', description: 'Revisa los intentos de reconocimiento y sus resultados.', steps: ['Recibir evento', 'Validar rostro', 'Auditar resultado'] },
+    documentacion: { eyebrow: 'RECURSOS / DOCUMENTACIÓN', title: 'Documentación', description: 'Consulta y administra los archivos disponibles para la operación.', steps: ['Seleccionar archivo', 'Guardar documento', 'Consultar archivo'] },
+    integraciones: { eyebrow: 'CONFIGURACIÓN / SERVICIOS', title: 'Integraciones', description: 'Comprueba el estado de los servicios que sostienen la plataforma.', steps: ['Configurar API', 'Conectar Supabase', 'Verificar estado'] },
+    seguridad: { eyebrow: 'CONTROL / SEGURIDAD', title: 'Seguridad', description: 'Consulta las medidas activas para proteger sesiones, imágenes y biometría.', steps: ['Autenticar', 'Proteger datos', 'Registrar actividad'] },
+  }
+  const context = tabContext[activeSection] || tabContext.resumen
+  const contextMetrics = activeSection === 'personas'
+    ? [registeredUsers.length, registeredUsers.filter((user) => user.email).length, registeredUsers.filter((user) => user.dni).length, registeredUsers.filter((user) => user.imagen_url).length]
+    : activeSection === 'documentacion'
+      ? [documents.length, documents.filter((item) => item.type === 'application/pdf').length, documents.filter((item) => item.type.startsWith('image/')).length, 'Local']
+      : activeSection === 'historial'
+        ? [validationHistory.length, recognizedCount, failedCount, `${recognitionRate}%`]
+        : activeSection === 'reconocer'
+          ? [`${faceMatch}%`, `${registrationConfidence}%`, form.nombre ? 'OK' : '—', form.nombre ? 'Reconocido' : 'Pendiente']
+          : ['—', '—', '—', '—']
+
   return (
     <div className="app-shell">
       <aside className={`sidebar ${sidebarOpen ? 'sidebar--open' : ''}`}>
@@ -345,7 +367,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
         </header>
 
         <div className="content-wrap" id="resumen">
-          <div className="page-heading"><div><div className="eyebrow"><span /> OPERACIONES / IDENTIDAD</div><h1>{activeSection === 'resumen' ? 'Resumen operativo' : activeSection === 'personas' ? 'Personas registradas' : activeSection === 'historial' ? 'Historial de validaciones' : activeSection === 'documentacion' ? 'Documentación' : activeSection === 'integraciones' ? 'Integraciones' : activeSection === 'seguridad' ? 'Seguridad' : 'Reconocer un rostro'}</h1><p>{activeSection === 'resumen' ? 'Supervisa el estado de la identidad biométrica y la actividad reciente.' : 'Gestiona la operación de reconocimiento facial desde un solo lugar.'}</p></div><div className="heading-meta"><span className="live-dot" /> {appConfig.usesDemoRecognition ? 'Modo demo' : 'API conectada'} <small>FastAPI · Supabase</small></div></div>
+          <div className="page-heading"><div><div className="eyebrow"><span /> {context.eyebrow}</div><h1>{context.title}</h1><p>{context.description}</p></div><div className="heading-meta"><span className="live-dot" /> {appConfig.usesDemoRecognition ? 'Modo demo' : 'API conectada'} <small>FastAPI · Supabase</small></div></div>
 
           <section className={`dashboard-overview ${activeSection === 'resumen' ? '' : 'dashboard-section-hidden'}`} aria-label="Resumen de métricas">
             <div className="metric-card metric-card--success"><span className="metric-label">Personas registradas</span><strong>{registeredUsers.length}</strong><small><UsersRound size={12} /> perfiles biométricos</small></div>
@@ -359,29 +381,16 @@ export default function Dashboard({ onLogout }: DashboardProps) {
             <div className="panel analytics-panel"><div className="panel-heading compact-heading"><div><span className="section-kicker">ESTADO</span><h2>Rendimiento del servicio</h2></div><Server size={19} /></div><div className="service-health"><div><span className="health-icon"><CheckCircle2 size={17} /></span><div><b>API de reconocimiento</b><small>{appConfig.usesDemoRecognition ? 'Modo demo activo' : 'Conectada y operativa'}</small></div><strong>100%</strong></div><div><span className="health-icon"><Database size={17} /></span><div><b>Persistencia de usuarios</b><small>{registeredUsers.length ? 'Datos disponibles localmente' : 'Sin perfiles registrados'}</small></div><strong>{registeredUsers.length ? 'OK' : '—'}</strong></div></div></div>
           </section>
 
-          <div className="steps" aria-label="Progreso del registro"><div className="step step--active"><span>01</span><b>Capturar imagen</b></div><div className="step-line" /><div className={`step ${preview ? 'step--active' : ''}`}><span>02</span><b>Verificar datos</b></div><div className="step-line" /><div className={`step ${isSaved ? 'step--active' : ''}`}><span>03</span><b>Guardar registro</b></div></div>
+          <div className="steps" aria-label={`Contexto de ${context.title}`}><div className="step step--active"><span>01</span><b>{context.steps[0]}</b></div><div className="step-line" /><div className={`step ${preview || activeSection !== 'reconocer' ? 'step--active' : ''}`}><span>02</span><b>{context.steps[1]}</b></div><div className="step-line" /><div className={`step ${isSaved || activeSection !== 'reconocer' ? 'step--active' : ''}`}><span>03</span><b>{context.steps[2]}</b></div></div>
 
-          <div className="metrics-row" aria-label="Métricas operativas">
-            <div className="metric-card">
-              <span className="metric-label">Precisión</span>
-              <strong>—</strong>
-              <small>Sin datos disponibles</small>
-            </div>
-            <div className="metric-card">
-              <span className="metric-label">Calidad facial</span>
-              <strong>—</strong>
-              <small>Sin imagen analizada</small>
-            </div>
-            <div className="metric-card">
-              <span className="metric-label">Modelo</span>
-              <strong>—</strong>
-              <small>Pendiente de conexión</small>
-            </div>
-            <div className="metric-card">
-              <span className="metric-label">Estado</span>
-              <strong>Listo</strong>
-              <small>Esperando un registro</small>
-            </div>
+          <div className="metrics-row" aria-label={`Métricas de ${context.title}`}>
+            {['Métrica principal', 'Datos asociados', 'Estado actual', 'Resultado'].map((fallbackLabel, index) => (
+              <div className="metric-card" key={fallbackLabel}>
+                <span className="metric-label">{activeSection === 'reconocer' ? ['Coincidencia', 'Calidad facial', 'Modelo', 'Estado'][index] : activeSection === 'personas' ? ['Total de perfiles', 'Con correo', 'Con DNI', 'Con foto'][index] : activeSection === 'historial' ? ['Eventos', 'Reconocidos', 'No reconocidos', 'Tasa de éxito'][index] : fallbackLabel}</span>
+                <strong>{contextMetrics[index]}</strong>
+                <small>{activeSection === 'personas' ? 'Datos de Supabase' : 'Datos de esta pestaña'}</small>
+              </div>
+            ))}
           </div>
 
           <section className={`recognition-grid ${activeSection === 'reconocer' ? '' : 'dashboard-section-hidden'}`} id="reconocer">
@@ -419,9 +428,9 @@ export default function Dashboard({ onLogout }: DashboardProps) {
             </div>
 
             <div className="panel details-panel"><div className="panel-heading"><div><span className="section-kicker">PASO 02</span><h2>Datos personales</h2></div><span className="match-badge"><span /> Coincidencia lista</span></div>
-              <button className="recognize-button" onClick={recognizeFaceFromImage} disabled={!preview || isRecognizing}>{isRecognizing ? <><span className="spinner" /> Analizando rostro...</> : <><ScanFace size={18} /> Reconocer y completar datos</>}</button>
+              <button className="recognize-button" onClick={() => void recognizeFaceFromImage()} disabled={!preview || isRecognizing}>{isRecognizing ? <><span className="spinner" /> Analizando rostro...</> : <><ScanFace size={18} /> Reconocer y completar datos</>}</button>
               {recognitionError && <p className="recognition-error" role="alert">{recognitionError}</p>}
-              <form onSubmit={saveRecord}><div className="form-grid"><Field label="Nombre" value={form.nombre} onChange={(value) => updateField('nombre', value)} placeholder="Ej. Valentina" /><Field label="Apellido" value={form.apellido} onChange={(value) => updateField('apellido', value)} placeholder="Ej. Rojas" /><Field label="Edad" value={form.edad} onChange={(value) => updateField('edad', value)} placeholder="Años" type="number" /><Field label="DNI" value={form.dni} onChange={(value) => updateField('dni', value)} placeholder="8 dígitos" /><Field wide label="Número de teléfono" value={form.telefono} onChange={(value) => updateField('telefono', value)} placeholder="+51 000 000 000" /></div><div className="form-footer"><span className="required-note">* Campos requeridos</span><button type="submit" className="button button--primary" disabled={!form.nombre || !form.apellido || !form.dni}>{isSaved ? <><Check size={16} /> Guardado</> : <><Database size={16} /> Guardar registro</>}</button></div></form>
+              <form onSubmit={saveRecord}><div className="form-grid"><Field label="Nombre" value={form.nombre} onChange={(value) => updateField('nombre', value)} placeholder="Ej. Valentina" /><Field label="Apellido" value={form.apellido} onChange={(value) => updateField('apellido', value)} placeholder="Ej. Rojas" /><Field label="Edad" value={form.edad} onChange={(value) => updateField('edad', value)} placeholder="Años" type="number" /><Field label="DNI" value={form.dni} onChange={(value) => updateField('dni', value)} placeholder="8 dígitos" /><Field wide label="Correo electrónico" value={form.email || ''} onChange={(value) => updateField('email', value)} placeholder="correo@empresa.com" /><Field wide label="Número de teléfono" value={form.telefono} onChange={(value) => updateField('telefono', value)} placeholder="+51 000 000 000" /></div><div className="form-footer"><span className="required-note">* Campos requeridos</span><button type="submit" className="button button--primary" disabled={!form.nombre || !form.apellido || !form.dni}>{isSaved ? <><Check size={16} /> Guardado</> : <><Database size={16} /> Guardar registro</>}</button></div></form>
             </div>
           </section>
 

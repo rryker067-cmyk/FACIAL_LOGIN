@@ -14,6 +14,16 @@ logger = logging.getLogger(__name__)
 class UserRepository:
 
     @staticmethod
+    async def get_user_by_id(user_id: str) -> dict[str, Any] | None:
+        if supabase is None:
+            return next((user for user in _MEMORY_USERS if str(user.get("id")) == str(user_id)), None)
+
+        response = supabase.table("usuarios").select(
+            "id,nombre,apellido,edad,telefono,email,dni,imagen_url"
+        ).eq("id", str(user_id)).limit(1).execute()
+        return response.data[0] if response.data else None
+
+    @staticmethod
     async def list_users() -> list[dict[str, Any]]:
         try:
             if supabase is None:
@@ -181,7 +191,8 @@ class UserRepository:
                 similarity = float(candidate.get("similarity", 0))
                 if similarity < threshold:
                     return None
-                return candidate
+                user = await UserRepository.get_user_by_id(str(candidate.get("id")))
+                return {**(user or {}), **candidate, "similarity": similarity}
             return None
         except Exception as err:
             raise HTTPException(

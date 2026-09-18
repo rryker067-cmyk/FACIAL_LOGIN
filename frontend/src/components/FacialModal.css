@@ -306,6 +306,20 @@
   font-weight: 400;
 }
 
+.facial-registration-thumbnails {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.25rem;
+}
+
+.facial-registration-thumbnails img {
+  width: 100%;
+  height: 34px;
+  border: 1px solid rgba(167, 243, 208, 0.45);
+  border-radius: 0.3rem;
+  object-fit: cover;
+}
+
 .facial-preview-actions {
   margin-top: auto;
 }

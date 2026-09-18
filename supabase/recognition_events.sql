@@ -37,3 +37,9 @@ create index if not exists recognition_events_user_id_idx
 alter table public.recognition_events enable row level security;
 
 notify pgrst, 'reload schema';
+
+alter table public.usuarios
+    add column if not exists imagenes_urls jsonb not null default '[]'::jsonb,
+    add column if not exists face_embeddings jsonb not null default '[]'::jsonb;
+
+notify pgrst, 'reload schema';

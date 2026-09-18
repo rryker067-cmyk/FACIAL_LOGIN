@@ -27,7 +27,7 @@ class UserRepository:
             )
 
         response = supabase.table("usuarios").select(
-            "id,nombre,apellido,edad,telefono,email,dni,imagen_url"
+            "id,nombre,apellido,edad,telefono,email,dni,imagen_url,imagenes_urls"
         ).eq("id", str(user_id)).limit(1).execute()
         return response.data[0] if response.data else None
 
@@ -41,7 +41,7 @@ class UserRepository:
                 )
 
             response = supabase.table("usuarios").select(
-                "id,nombre,apellido,edad,telefono,email,dni,imagen_url,created_at"
+                "id,nombre,apellido,edad,telefono,email,dni,imagen_url,imagenes_urls,created_at"
             ).order("nombre").execute()
             return response.data or []
         except Exception as err:
@@ -298,7 +298,13 @@ class UserRepository:
             ) from err
 
     @staticmethod
-    async def create_user(data: dict, embedding: list[float], avatar_url: str) -> dict:
+    async def create_user(
+        data: dict,
+        embedding: list[float],
+        avatar_url: str,
+        image_urls: list[str],
+        embeddings: list[list[float]],
+    ) -> dict:
         try:
             if len(embedding) != 512:
                 raise ValueError(f"El embedding debe tener 512 dimensiones, recibió {len(embedding)}.")
@@ -312,7 +318,9 @@ class UserRepository:
                 "email": data.get("email"),
                 "dni": data.get("dni"),
                 "imagen_url": avatar_url,
+                "imagenes_urls": image_urls,
                 "face_embedding": embedding,
+                "face_embeddings": embeddings,
             }
 
             if supabase is None:

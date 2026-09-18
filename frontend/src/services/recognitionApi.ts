@@ -132,7 +132,7 @@ export async function registerUserWithFace(data: {
   telefono: string
   email?: string
   dni?: string
-  imagen_base64: string
-}): Promise<{ id: string; nombre: string; apellido: string; imagen_url: string }> {
+  imagenes_base64: string[]
+}): Promise<{ id: string; nombre: string; apellido: string; imagen_url: string; validation_score?: number; sample_count?: number }> {
   return requestJson('/api/v1/users/register', data)
 }

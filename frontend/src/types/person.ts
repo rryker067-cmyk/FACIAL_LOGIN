@@ -6,6 +6,7 @@ export type PersonRecord = {
   telefono: string
   email?: string
   imagen_url?: string
+  imagenes_urls?: string[]
   similarity?: string
   created_at?: string
 }

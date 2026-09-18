@@ -8,7 +8,7 @@ class UserRegisterRequest(BaseModel):
     telefono: str = Field(..., min_length=8)
     email: str | None = Field(default=None, description="Correo electrónico opcional del usuario")
     dni: str | None = Field(default=None, description="Documento de identidad opcional del usuario")
-    imagen_base64: str = Field(...)
+    imagenes_base64: list[str] = Field(..., min_length=3, max_length=3)
 
 
 class FaceRecognitionRequest(BaseModel):
@@ -33,7 +33,10 @@ class UserResponse(BaseModel):
     nombre: str
     apellido: str
     imagen_url: str
+    imagenes_urls: list[str] = Field(default_factory=list)
     edad: int | None = None
     telefono: str | None = None
     email: str | None = None
     dni: str | None = None
+    validation_score: float | None = None
+    sample_count: int | None = None

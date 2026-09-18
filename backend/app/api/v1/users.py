@@ -128,6 +128,7 @@ def _user_response(user: dict) -> UserResponse:
         nombre=user["nombre"],
         apellido=user["apellido"],
         imagen_url=user.get("imagen_url", ""),
+        imagenes_urls=user.get("imagenes_urls") or [],
         edad=user.get("edad"),
         telefono=user.get("telefono"),
         email=user.get("email"),
@@ -137,29 +138,45 @@ def _user_response(user: dict) -> UserResponse:
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register_user(payload: UserRegisterRequest):
-    if not payload.imagen_base64.startswith("data:image/"):
+    if len(payload.imagenes_base64) != 3 or any(
+        not image.startswith("data:image/") for image in payload.imagenes_base64
+    ):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail={
                 "error": "CAMERA_IMAGE_REQUIRED",
-                "message": "El registro requiere una fotografía capturada desde la cámara.",
+                "message": "El registro requiere exactamente tres fotografías capturadas desde la cámara.",
             },
         )
 
-    cv2_img = await run_in_threadpool(
-        LightweightLiveness.verify_quality_and_liveness,
-        payload.imagen_base64
-    )
+    embeddings: list[list[float]] = []
+    for image in payload.imagenes_base64:
+        cv2_img = await run_in_threadpool(
+            LightweightLiveness.verify_quality_and_liveness, image
+        )
+        embeddings.append(await run_in_threadpool(face_embedder.extract_embedding, cv2_img))
 
-    embedding = await run_in_threadpool(
-        face_embedder.extract_embedding,
-        cv2_img
-    )
+    pair_scores = [
+        sum(left * right for left, right in zip(first, second))
+        for index, first in enumerate(embeddings)
+        for second in embeddings[index + 1:]
+    ]
+    consistency_score = min(pair_scores)
+    if consistency_score < 0.45:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": "FACE_SAMPLES_INCONSISTENT",
+                "message": "Las tres capturas no parecen pertenecer al mismo rostro. Repita el registro.",
+                "consistency_score": round(consistency_score, 4),
+            },
+        )
 
-    existing_match = await UserRepository.find_best_face_match(
-        query_embedding=embedding,
-        threshold=0.75,
-    )
+    average_embedding = [sum(values) / len(values) for values in zip(*embeddings)]
+    norm = sum(value * value for value in average_embedding) ** 0.5
+    embedding = [value / norm for value in average_embedding]
+
+    existing_match = await UserRepository.find_best_face_match(query_embedding=embedding, threshold=0.75)
     if existing_match:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -184,12 +201,18 @@ async def register_user(payload: UserRegisterRequest):
             },
         )
 
-    avatar_url = await UserRepository.upload_avatar(payload.imagen_base64)
+    image_urls = [await UserRepository.upload_avatar(image) for image in payload.imagenes_base64]
 
     user = await UserRepository.create_user(
         data=payload.model_dump(),
         embedding=embedding,
-        avatar_url=avatar_url
+        avatar_url=image_urls[0],
+        image_urls=image_urls,
+        embeddings=embeddings,
     )
 
-    return _user_response(user)
+    response = _user_response(user)
+    return response.model_copy(update={
+        "validation_score": round(consistency_score * 100, 2),
+        "sample_count": len(embeddings),
+    })

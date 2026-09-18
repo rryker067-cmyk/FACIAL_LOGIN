@@ -29,6 +29,7 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
 
   // Imagen fija capturada
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [registrationImages, setRegistrationImages] = useState<string[]>([]);
   const [matchedUser, setMatchedUser] = useState<any>(null);
   const [faceMatch, setFaceMatch] = useState(0);
   const [registrationConfidence, setRegistrationConfidence] = useState(0);
@@ -184,10 +185,11 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
     try {
       const snapshotUrl = captureSnapshot();
       setCapturedImage(snapshotUrl);
+      setRegistrationImages((current) => [...current, snapshotUrl].slice(0, 3));
       setFaceMatch(0);
       setRegistrationConfidence(0);
       setStatus('success');
-      setMessage('¡Fotografía capturada con éxito! Se verificará contra la base de datos al guardar.');
+      setMessage(`Fotografía ${Math.min(registrationImages.length + 1, 3)} de 3 capturada. Cambie ligeramente la expresión o el ángulo para la siguiente.`);
     } catch (error: any) {
       setStatus('error');
       setMessage(error?.message || 'No se pudo capturar la fotografía de la cámara.');
@@ -201,13 +203,13 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
       return;
     }
 
-    if (!capturedImage) {
-      setMessage('Tome una fotografía antes de guardar el registro.');
+    if (registrationImages.length !== 3) {
+      setMessage(`Debe tomar exactamente 3 fotografías. Actualmente tiene ${registrationImages.length}.`);
       setStatus('error');
       return;
     }
 
-    const imageToSave = capturedImage;
+    const imageToSave = registrationImages[0];
     const newUserData = {
       name: registerName.trim(),
       email: registerEmail.trim(),
@@ -241,7 +243,7 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
         telefono: registerPhone.trim() || '+51 900 000 000',
         email: registerEmail.trim(),
         dni: registerDni.trim(),
-        imagen_base64: imageToSave,
+        imagenes_base64: registrationImages,
       });
 
       const facialUsers = JSON.parse(localStorage.getItem('veris_facial_users') || '[]');
@@ -249,7 +251,8 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
       localStorage.setItem('veris_facial_users', JSON.stringify(facialUsers));
 
       setStatus('success');
-      setMessage('¡Registro guardado exitosamente!');
+      setRegistrationConfidence(Math.round(response.validation_score || 0));
+      setMessage(`¡Registro guardado! Se evaluaron ${response.sample_count || 3} capturas con ${Math.round(response.validation_score || 0)}% de consistencia.`);
 
       setTimeout(() => {
         stopCamera();
@@ -292,14 +295,14 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
         <div className="facial-tabs">
           <button 
             type="button" 
-            onClick={() => { setMode('login'); setCapturedImage(null); setDuplicateNotice(false); setMessage(''); setStatus('idle'); }}
+            onClick={() => { setMode('login'); setCapturedImage(null); setRegistrationImages([]); setDuplicateNotice(false); setMessage(''); setStatus('idle'); }}
             className={`facial-tab-btn ${mode === 'login' ? 'active' : ''}`}
           >
             <LogIn size={14} /> Iniciar Sesión
           </button>
           <button 
             type="button" 
-            onClick={() => { setMode('register'); setCapturedImage(null); setDuplicateNotice(false); setMessage(''); setStatus('idle'); }}
+            onClick={() => { setMode('register'); setCapturedImage(null); setRegistrationImages([]); setDuplicateNotice(false); setMessage(''); setStatus('idle'); }}
             className={`facial-tab-btn ${mode === 'register' ? 'active' : ''}`}
           >
             <UserPlus size={14} /> Registrarse
@@ -370,13 +373,16 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
                 <div className="facial-capture-preview">
                   <span className="facial-preview-label">Vista previa</span>
                   <img src={capturedImage} alt="Vista previa de la captura" />
-                  <span className="facial-preview-status">Foto seleccionada</span>
+                  <span className="facial-preview-status">{registrationImages.length} de 3 fotos seleccionadas</span>
+                  {mode === 'register' && <div className="facial-registration-thumbnails" aria-label="Capturas del registro">
+                    {registrationImages.map((image, index) => <img key={`${image}-${index}`} src={image} alt={`Captura ${index + 1} del registro`} />)}
+                  </div>}
                   <div className="facial-preview-actions">
                     <button type="button" onClick={() => { setStatus('success'); setMessage('Foto confirmada. Puede guardar el registro.'); }} className="facial-use-btn">
                       <CheckCircle size={14} /> Usar esta foto
                     </button>
-                    <button type="button" onClick={() => setCapturedImage(null)} className="facial-retake-btn">
-                      <Camera size={14} /> Tomar otra
+                    <button type="button" onClick={() => { setCapturedImage(null); setRegistrationImages([]); }} className="facial-retake-btn">
+                      <Camera size={14} /> Reiniciar capturas
                     </button>
                   </div>
                 </div>
@@ -412,13 +418,14 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
                 type="button" 
                 onClick={handleCaptureRegistration}
                 className="facial-capture-btn-under"
+                disabled={registrationImages.length >= 3}
               >
-                <Camera size={16} /> {capturedImage ? 'Tomar otra fotografía' : 'Tomar fotografía'}
+                <Camera size={16} /> {registrationImages.length >= 3 ? '3 fotos listas' : `Tomar fotografía ${registrationImages.length + 1} de 3`}
               </button>
             )}
             
             <p className="facial-cam-legend">
-              {mode === 'login' ? 'Pulsa “Escanear ahora” para verificar el rostro.' : 'Capture su foto para el registro biométrico.'}
+              {mode === 'login' ? 'Pulsa “Escanear ahora” para verificar el rostro.' : 'Capture tres fotos: rostro neutral y dos expresiones o ángulos diferentes.'}
             </p>
           </div>
 

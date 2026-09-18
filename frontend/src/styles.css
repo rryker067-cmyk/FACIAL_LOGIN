@@ -283,6 +283,9 @@ button { border: 0; }
 .person-card, .integration-list > div { display: flex; align-items: center; gap: 10px; padding: 13px; border: 1px solid #e7efeb; border-radius: 10px; }
 .person-card--interactive { width: 100%; color: inherit; background: #fff; text-align: left; cursor: pointer; transition: border-color .15s, box-shadow .15s; }
 .person-card--interactive:hover { border-color: #9cc8f4; box-shadow: 0 6px 16px rgba(42, 117, 217, .08); }
+.person-card-main { display: flex; flex: 1; min-width: 0; align-items: center; gap: 10px; padding: 0; border: 0; color: inherit; background: transparent; text-align: left; cursor: pointer; }
+.person-card-main > div:nth-child(2) { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.person-card-delete { flex: 0 0 auto; color: #bd4d4d; }
 .person-photo { display: grid; place-items: center; flex: 0 0 auto; width: 38px; height: 38px; overflow: hidden; border-radius: 10px; color: var(--accent-strong); background: linear-gradient(135deg, #eaf4ff 0%, #dfeeff 100%); font-size: 10px; font-weight: 800; }
 .person-photo img { width: 100%; height: 100%; object-fit: cover; }
 .person-photo--large { width: 54px; height: 54px; border-radius: 14px; }

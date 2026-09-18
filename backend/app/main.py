@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.app.config import settings
 from backend.app.api.v1.router import api_router
 from backend.app.db.supabase_client import supabase
+from backend.app.core.face_embedder import face_embedder
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -28,4 +29,5 @@ async def health_check():
         "service": settings.PROJECT_NAME,
         "version": settings.VERSION,
         "supabase_configured": supabase is not None,
+        "face_model_loaded": face_embedder.session is not None,
     }

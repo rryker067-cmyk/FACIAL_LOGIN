@@ -1,4 +1,3 @@
-import logging
 import os
 from pathlib import Path
 
@@ -17,7 +16,6 @@ class FaceEmbedder:
         self.model_path = model_path
         self.session = None
         self.input_name = None
-        self.logger = logging.getLogger(__name__)
 
         if os.path.exists(model_path):
             opts = ort.SessionOptions()
@@ -45,17 +43,9 @@ class FaceEmbedder:
                 outputs = self.session.run(None, {self.input_name: input_tensor})
                 raw_embedding = outputs[0][0]
             else:
-                flat = rgb.astype(np.float32).reshape(-1)
-                raw_embedding = flat[:self.EMBEDDING_DIMENSION]
-                if raw_embedding.size < self.EMBEDDING_DIMENSION:
-                    raw_embedding = np.pad(
-                        raw_embedding,
-                        (0, self.EMBEDDING_DIMENSION - raw_embedding.size),
-                        mode='constant',
-                    )
-                self.logger.warning(
-                    "Modelo facial ONNX no disponible; usando embedding de respaldo de %s dimensiones.",
-                    self.EMBEDDING_DIMENSION,
+                raise RuntimeError(
+                    f"Modelo facial ONNX no disponible en {self.model_path}. "
+                    "El servicio no puede realizar reconocimiento biométrico."
                 )
 
             raw_embedding = np.asarray(raw_embedding, dtype=np.float32).reshape(-1)

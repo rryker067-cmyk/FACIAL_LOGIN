@@ -31,9 +31,10 @@ COPY --from=builder /usr/local /usr/local
 COPY . .
 
 RUN mkdir -p /app/backend/app/models && \
-    if [ ! -f /app/backend/app/models/face_recognition.onnx ]; then \
+    if [ ! -s /app/backend/app/models/face_recognition.onnx ]; then \
       python -c "import io, pathlib, urllib.request, zipfile; target=pathlib.Path('/app/backend/app/models/face_recognition.onnx'); data=urllib.request.urlopen('https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip').read(); archive=zipfile.ZipFile(io.BytesIO(data)); target.write_bytes(archive.read('w600k_r50.onnx'))"; \
-    fi
+    fi && \
+    test -s /app/backend/app/models/face_recognition.onnx
 
 EXPOSE 10000
 

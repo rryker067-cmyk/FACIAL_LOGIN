@@ -7,7 +7,6 @@ from fastapi import HTTPException, status
 
 from backend.app.db.supabase_client import supabase
 
-_MEMORY_USERS: list[dict[str, Any]] = []
 logger = logging.getLogger(__name__)
 
 
@@ -16,7 +15,10 @@ class UserRepository:
     @staticmethod
     async def get_user_by_id(user_id: str) -> dict[str, Any] | None:
         if supabase is None:
-            return next((user for user in _MEMORY_USERS if str(user.get("id")) == str(user_id)), None)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={"error": "SUPABASE_NOT_CONFIGURED", "message": "Supabase no está configurado."},
+            )
 
         response = supabase.table("usuarios").select(
             "id,nombre,apellido,edad,telefono,email,dni,imagen_url"
@@ -27,7 +29,10 @@ class UserRepository:
     async def list_users() -> list[dict[str, Any]]:
         try:
             if supabase is None:
-                return _MEMORY_USERS.copy()
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail={"error": "SUPABASE_NOT_CONFIGURED", "message": "Supabase no está configurado."},
+                )
 
             response = supabase.table("usuarios").select(
                 "id,nombre,apellido,edad,telefono,email,dni,imagen_url"
@@ -46,15 +51,9 @@ class UserRepository:
 
         try:
             if supabase is None:
-                normalized_email = email.strip().lower() if email else None
-                normalized_dni = dni.strip() if dni else None
-                return next(
-                    (
-                        user for user in _MEMORY_USERS
-                        if (normalized_email and str(user.get("email", "")).lower() == normalized_email)
-                        or (normalized_dni and str(user.get("dni", "")) == normalized_dni)
-                    ),
-                    None,
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail={"error": "SUPABASE_NOT_CONFIGURED", "message": "Supabase no está configurado."},
                 )
 
             if email:
@@ -137,8 +136,10 @@ class UserRepository:
             }
 
             if supabase is None:
-                _MEMORY_USERS.append(record)
-                return record
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail={"error": "SUPABASE_NOT_CONFIGURED", "message": "Supabase no está configurado."},
+                )
 
             response = supabase.table("usuarios").insert(record).execute()
             if not response.data:
@@ -159,24 +160,13 @@ class UserRepository:
         """
         try:
             if supabase is None:
-                if not _MEMORY_USERS:
-                    return None
-
-                match = _MEMORY_USERS[-1]
-                similarity = 0.96
-                if similarity < threshold:
-                    return None
-                return {
-                    "id": match["id"],
-                    "nombre": match["nombre"],
-                    "apellido": match["apellido"],
-                    "edad": match.get("edad"),
-                    "dni": match.get("dni"),
-                    "telefono": match.get("telefono"),
-                    "email": match.get("email"),
-                    "similarity": similarity,
-                    "imagen_url": match.get("imagen_url", ""),
-                }
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail={
+                        "error": "SUPABASE_NOT_CONFIGURED",
+                        "message": "La identificación facial requiere una conexión activa con Supabase.",
+                    },
+                )
 
             response = supabase.rpc(
                 "match_face_1n",
@@ -191,7 +181,8 @@ class UserRepository:
                 similarity = float(candidate.get("similarity", 0))
                 if similarity < threshold:
                     return None
-                user = await UserRepository.get_user_by_id(str(candidate.get("id")))
+                candidate_id = candidate.get("id") or candidate.get("user_id")
+                user = await UserRepository.get_user_by_id(str(candidate_id)) if candidate_id else None
                 return {**(user or {}), **candidate, "similarity": similarity}
             return None
         except Exception as err:

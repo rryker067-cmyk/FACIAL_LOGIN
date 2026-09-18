@@ -3,8 +3,9 @@ import { emptyPerson, PersonRecord } from '../types/person'
 
 async function requestJson<T>(endpoint: string, body?: Record<string, unknown>, method = 'POST'): Promise<T> {
   if (appConfig.usesDemoRecognition) {
-    await new Promise((resolve) => window.setTimeout(resolve, 700))
-    return { ...(emptyPerson as T) } as T
+    const error = new Error('La API de reconocimiento no está configurada. Define VITE_API_URL.') as Error & { code?: string }
+    error.code = 'API_NOT_CONFIGURED'
+    throw error
   }
 
   const response = await fetch(`${appConfig.apiUrl}${endpoint}`, {

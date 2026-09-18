@@ -87,7 +87,79 @@ FACIAL_LOGIN/
 └── README.md
 ```
 
-## 3. Componentes y responsabilidades
+## 3. Librerías y tecnologías utilizadas
+
+Esta aplicación está enfocada en autenticación facial. No ejecuta SciPy ni
+NLTK y no necesita esas librerías para registrar, comparar o identificar
+rostros.
+
+### 3.1 Backend Python
+
+Las dependencias están declaradas en `requirements.txt`.
+
+| Librería | Versión | Uso en el reconocimiento facial |
+|---|---:|---|
+| `fastapi` | `0.111.0` | Define los endpoints REST, valida solicitudes y devuelve respuestas HTTP |
+| `uvicorn[standard]` | `0.30.1` | Servidor ASGI para ejecutar FastAPI en desarrollo y producción |
+| `pydantic` | `2.7.4` | Modelos y validación de los payloads de login, registro e imágenes |
+| `pydantic-settings` | `2.3.4` | Carga y valida variables de entorno del backend |
+| `onnxruntime` | `1.30.0` | Ejecuta el modelo ArcFace ONNX para producir embeddings faciales |
+| `opencv-python-headless` | `4.10.0.82` | Decodifica imágenes, detecta rostros y calcula controles de calidad |
+| `numpy` | `1.26.4` | Manipula matrices, normaliza vectores y calcula la norma L2 |
+| `supabase` | `2.5.1` | Conecta con Auth, PostgreSQL, RPC y Storage de Supabase |
+| `python-jose[cryptography]` | `3.3.0` | Firma los JWT de sesión emitidos después del reconocimiento |
+| `python-multipart` | `0.0.9` | Soporte de formularios multipart para FastAPI y futuras cargas |
+
+### 3.2 Frontend React
+
+Las dependencias están declaradas en `frontend/package.json`.
+
+| Librería | Versión declarada | Uso |
+|---|---:|---|
+| `react` | `latest` | Componentes y estado de la interfaz |
+| `react-dom` | `latest` | Renderizado de React en el navegador |
+| `typescript` | `latest` | Tipado estático del frontend |
+| `vite` | `latest` | Servidor de desarrollo y empaquetado de producción |
+| `@vitejs/plugin-react` | `latest` | Integración de React y JSX/TSX con Vite |
+| `lucide-react` | `latest` | Iconos de cámara, usuario, estado y dashboard |
+| `@types/react` | `latest` | Tipos TypeScript para React |
+| `@types/react-dom` | `latest` | Tipos TypeScript para React DOM |
+
+El frontend usa `fetch` nativo para comunicarse con FastAPI. No incorpora un
+SDK de Supabase en el navegador: las operaciones sensibles se ejecutan desde
+el backend.
+
+### 3.3 APIs nativas del navegador
+
+Además de las dependencias npm, se utilizan APIs estándar del navegador:
+
+- `navigator.mediaDevices.getUserMedia`: acceso a la cámara de vídeo.
+- `HTMLVideoElement`: muestra el vídeo en tiempo real.
+- `HTMLCanvasElement`: captura un fotograma y lo convierte en JPEG/PNG.
+- `fetch`: envía las imágenes y recibe los perfiles reconocidos.
+- `localStorage`: conserva temporalmente el historial local del dashboard.
+- `IndexedDB`: conserva documentos cargados en el navegador.
+
+### 3.4 Servicios externos
+
+| Servicio | Uso |
+|---|---|
+| Supabase Auth | Verificación de correo y contraseña |
+| Supabase PostgreSQL | Usuarios y embeddings faciales |
+| Supabase pgvector | Comparación vectorial 1:N |
+| Supabase Storage | Fotografías reales en el bucket `avatars` |
+| Render | Ejecución y despliegue del backend |
+| Vercel u hosting estático | Despliegue del frontend |
+
+### 3.5 Librerías estándar y utilidades
+
+El backend también utiliza módulos estándar de Python: `base64` para
+decodificar imágenes, `uuid` para nombrar archivos, `logging` para errores,
+`pathlib` para rutas, `shutil`, `urllib.request` y `zipfile` para descargar y
+extraer el modelo ONNX, `datetime` para expiración de tokens y `typing` para
+anotaciones.
+
+## 4. Componentes y responsabilidades
 
 | Componente | Responsabilidad |
 |---|---|
@@ -103,7 +175,7 @@ FACIAL_LOGIN/
 | `PostgreSQL/pgvector` | Almacenamiento y búsqueda de embeddings |
 | `Supabase Storage` | Fotografías reales de los usuarios |
 
-## 4. Modelo de datos en Supabase
+## 5. Modelo de datos en Supabase
 
 La tabla principal utilizada por la aplicación es `usuarios`. Debe contener
 como mínimo:
@@ -140,7 +212,7 @@ ArcFace y normalizado con norma L2.
 - El registro solo acepta una data URL con prefijo `data:image/...`.
 - El correo y el DNI se comprueban antes de insertar.
 
-## 5. Función RPC de búsqueda facial
+## 6. Función RPC de búsqueda facial
 
 La aplicación llama a `match_face_1n`. La función debe recibir el vector y el
 umbral, y devolver como mínimo un identificador y la similitud:
@@ -171,7 +243,7 @@ La implementación también acepta el nombre `user_id` si el RPC existente lo
 devuelve. Después de la coincidencia, el backend consulta la fila completa de
 `usuarios` para recuperar correo, DNI, teléfono, edad e imagen.
 
-## 6. Autenticación y autorización
+## 7. Autenticación y autorización
 
 ### 6.1 Inicio con correo y contraseña
 
@@ -199,7 +271,7 @@ No existen credenciales hardcodeadas en el frontend.
 
 Una similitud menor al 75% produce `401 FACE_NOT_RECOGNIZED`.
 
-## 7. Registro de un usuario
+## 8. Registro de un usuario
 
 El flujo de registro es:
 
@@ -228,7 +300,7 @@ La vista previa lateral permite confirmar la imagen antes de enviarla. Si no
 existe el bucket `avatars`, el backend devuelve un error y no utiliza una
 imagen de sustitución.
 
-## 8. Validación de calidad y liveness
+## 9. Validación de calidad y liveness
 
 `LightweightLiveness` realiza validaciones previas al modelo:
 
@@ -242,7 +314,7 @@ Estos controles son validaciones de calidad y presencia básica, no sustituyen
 un sistema avanzado de detección anti-spoofing. Una foto borrosa, muy oscura,
 sobreexpuesta o demasiado pequeña se rechaza con `422`.
 
-## 9. Fotografías y Supabase Storage
+## 10. Fotografías y Supabase Storage
 
 Crear un bucket público llamado `avatars` en Supabase Storage. La aplicación
 guarda los archivos con este patrón:
@@ -260,7 +332,7 @@ Se recomienda permitir:
 
 La aplicación no usa imágenes de Unsplash ni URLs de reemplazo.
 
-## 10. API del backend
+## 11. API del backend
 
 La API base es `/api/v1`.
 
@@ -375,7 +447,7 @@ Registro:
 }
 ```
 
-## 11. Respuestas de error
+## 12. Respuestas de error
 
 | Código | Error | Causa |
 |---:|---|---|
@@ -392,7 +464,7 @@ Registro:
 El frontend conserva el mensaje del backend y no sustituye un error con datos
 falsos.
 
-## 12. Contrato de configuración
+## 13. Contrato de configuración
 
 ### Backend: `backend/.env`
 
@@ -424,7 +496,7 @@ Si falta `VITE_API_URL`, el cliente marca la API como no configurada y las
 operaciones reales fallan explícitamente; no se genera reconocimiento de
 demostración.
 
-## 13. Integración frontend
+## 14. Integración frontend
 
 `recognitionApi.ts` centraliza las llamadas HTTP. La configuración normaliza
 URLs como:
@@ -449,7 +521,7 @@ dashboard:
 La transición de login facial al dashboard espera cinco segundos para que el
 usuario pueda revisar la identidad reconocida.
 
-## 14. Dashboard y métricas
+## 15. Dashboard y métricas
 
 El dashboard contiene las secciones:
 
@@ -483,7 +555,7 @@ create table public.recognition_events (
 Después se debería insertar el evento desde FastAPI y exponer un endpoint de
 consulta para que las métricas del dashboard sean completamente dinámicas.
 
-## 15. Flujo completo de reconocimiento
+## 16. Flujo completo de reconocimiento
 
 ```text
 Usuario
@@ -520,7 +592,7 @@ Supabase RPC match_face_1n
      Dashboard autocompletado
 ```
 
-## 16. Modelo facial y despliegue
+## 17. Modelo facial y despliegue
 
 El backend utiliza `w600k_mbf.onnx`, distribuido dentro de `buffalo_s.zip`.
 Este modelo produce embeddings de 512 dimensiones y se ejecuta con
@@ -537,7 +609,7 @@ supabase_configured = true
 face_model_loaded = true
 ```
 
-## 17. Desarrollo local
+## 18. Desarrollo local
 
 ### Backend
 
@@ -566,7 +638,7 @@ cd frontend && npm run build
 git diff --check
 ```
 
-## 18. Producción con Render y frontend estático
+## 19. Producción con Render y frontend estático
 
 ### Backend
 
@@ -593,7 +665,7 @@ Debe indicar que Supabase y el modelo están disponibles. A continuación se
 debe probar registro, login facial, login por credenciales y reconocimiento
 desde el dashboard con un usuario real.
 
-## 19. Seguridad y operación
+## 20. Seguridad y operación
 
 - No almacenar contraseñas en `usuarios`.
 - No exponer claves privadas en archivos `VITE_*`.
@@ -607,7 +679,7 @@ desde el dashboard con un usuario real.
 - Usar HTTPS en frontend, backend y Supabase.
 - Revisar periódicamente las políticas del bucket `avatars`.
 
-## 20. Fases de desarrollo y mantenimiento
+## 21. Fases de desarrollo y mantenimiento
 
 ### Fase 1 — Base biométrica implementada
 
@@ -648,7 +720,7 @@ desde el dashboard con un usuario real.
 - Retención y eliminación segura de datos biométricos.
 - Pruebas automatizadas de integración.
 
-## 21. Matriz de comprobación operativa
+## 22. Matriz de comprobación operativa
 
 | Comprobación | Resultado esperado |
 |---|---|
@@ -663,7 +735,7 @@ desde el dashboard con un usuario real.
 | Bucket inexistente | `503 AVATAR_STORAGE_UNAVAILABLE` |
 | `VITE_API_URL` ausente | Error explícito, sin datos simulados |
 
-## 22. Limitaciones conocidas
+## 23. Limitaciones conocidas
 
 - El historial del dashboard aún no es centralizado en Supabase.
 - El detector Haar puede no detectar todos los rostros en condiciones difíciles.
@@ -673,4 +745,3 @@ desde el dashboard con un usuario real.
   correctamente en el proyecto Supabase.
 - Los cambios locales deben desplegarse para que estén activos en Render y en
   el proveedor del frontend.
-

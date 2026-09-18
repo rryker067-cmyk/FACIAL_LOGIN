@@ -7,6 +7,7 @@ export type PersonRecord = {
   email?: string
   imagen_url?: string
   similarity?: string
+  created_at?: string
 }
 
 export const emptyPerson: PersonRecord = {

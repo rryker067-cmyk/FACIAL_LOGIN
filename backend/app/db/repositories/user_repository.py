@@ -35,7 +35,7 @@ class UserRepository:
                 )
 
             response = supabase.table("usuarios").select(
-                "id,nombre,apellido,edad,telefono,email,dni,imagen_url"
+                "id,nombre,apellido,edad,telefono,email,dni,imagen_url,created_at"
             ).order("nombre").execute()
             return response.data or []
         except Exception as err:
@@ -43,6 +43,69 @@ class UserRepository:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Error consultando usuarios en Supabase: {str(err)}",
             ) from err
+
+    @staticmethod
+    async def record_recognition_event(
+        user_id: str | None,
+        similarity: float,
+        recognized: bool,
+        source: str = "dashboard",
+    ) -> None:
+        """Persists an auditable facial recognition attempt without breaking recognition."""
+        if supabase is None:
+            logger.warning("No se registró el evento facial: Supabase no está configurado.")
+            return
+
+        try:
+            supabase.table("recognition_events").insert({
+                "user_id": user_id,
+                "similarity": round(max(0, min(1, similarity)), 5),
+                "recognized": recognized,
+                "source": source,
+            }).execute()
+        except Exception:
+            logger.exception("No se pudo persistir el evento de reconocimiento facial")
+
+    @staticmethod
+    async def get_dashboard_stats() -> dict[str, Any]:
+        """Returns dashboard metrics sourced from Supabase users and recognition events."""
+        users = await UserRepository.list_users()
+        events: list[dict[str, Any]] = []
+
+        if supabase is not None:
+            try:
+                response = supabase.table("recognition_events").select(
+                    "id,user_id,similarity,recognized,source,created_at"
+                ).order("created_at", desc=True).limit(1000).execute()
+                events = response.data or []
+            except Exception:
+                logger.exception("No se pudieron consultar los eventos de reconocimiento")
+
+        recognized_count = sum(1 for event in events if event.get("recognized"))
+        failed_count = len(events) - recognized_count
+        validation_count = len(events)
+        activity_by_day: dict[str, int] = {}
+        for user in users:
+            created_at = user.get("created_at")
+            if created_at:
+                day = str(created_at)[:10]
+                activity_by_day[day] = activity_by_day.get(day, 0) + 1
+        for event in events:
+            created_at = event.get("created_at")
+            if created_at:
+                day = str(created_at)[:10]
+                activity_by_day[day] = activity_by_day.get(day, 0) + 1
+
+        return {
+            "registered_count": len(users),
+            "validation_count": validation_count,
+            "recognized_count": recognized_count,
+            "unrecognized_count": failed_count,
+            "recognition_rate": round((recognized_count / validation_count) * 100) if validation_count else 0,
+            "activity_by_day": activity_by_day,
+            "recent_events": events[:20],
+            "recent_users": users[:20],
+        }
 
     @staticmethod
     async def find_by_identity(email: str | None, dni: str | None) -> dict | None:

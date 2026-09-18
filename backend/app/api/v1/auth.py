@@ -74,6 +74,12 @@ async def login_face_1n(payload: LoginFaceRequest):
     )
 
     if not match:
+        await UserRepository.record_recognition_event(
+            user_id=None,
+            similarity=0,
+            recognized=False,
+            source="login-face",
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={
@@ -83,6 +89,12 @@ async def login_face_1n(payload: LoginFaceRequest):
         )
 
     similarity_pct = round(match["similarity"] * 100, 2)
+    await UserRepository.record_recognition_event(
+        user_id=str(match["id"]),
+        similarity=float(match["similarity"]),
+        recognized=True,
+        source="login-face",
+    )
     
     # 4. Generación de Session Token
     token = create_access_token({

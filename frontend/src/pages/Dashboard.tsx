@@ -29,7 +29,7 @@ import {
 } from 'lucide-react'
 import Field from '../components/Field'
 import { appConfig } from '../config/env'
-import { listUsers, recognizeFace } from '../services/recognitionApi'
+import { DashboardStats, getDashboardStats, listUsers, recognizeFace } from '../services/recognitionApi'
 import { emptyPerson, PersonRecord } from '../types/person'
 
 const navItems = [
@@ -104,6 +104,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   const [activeSection, setActiveSection] = useState('resumen')
   const [registeredUsers, setRegisteredUsers] = useState<FacialUser[]>([])
   const [validationHistory, setValidationHistory] = useState<Validation[]>([])
+  const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null)
   const [faceMatch, setFaceMatch] = useState(0)
   const [registrationConfidence, setRegistrationConfidence] = useState(0)
   const [documents, setDocuments] = useState<StoredDocument[]>([])
@@ -114,15 +115,30 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   useEffect(() => () => streamRef.current?.getTracks().forEach((track) => track.stop()), [])
 
   useEffect(() => {
-    listUsers()
-      .then((users) => setRegisteredUsers(users.map((user) => ({
-        ...user,
-        edad: String(user.edad ?? ''),
-        telefono: user.telefono || '',
-        dni: user.dni || '',
-      }))))
-      .catch(() => setRecognitionNotice('No se pudieron cargar los usuarios desde Supabase.'))
-    setValidationHistory(readStorage<Validation[]>('veris_validation_history', []))
+    const loadDashboardData = async () => {
+      try {
+        const [users, stats] = await Promise.all([listUsers(), getDashboardStats()])
+        setRegisteredUsers(users.map((user) => ({
+          ...user,
+          edad: String(user.edad ?? ''),
+          telefono: user.telefono || '',
+          dni: user.dni || '',
+        })))
+        setDashboardStats(stats)
+        setValidationHistory(stats.recent_events.map((event) => ({
+          name: event.recognized
+            ? (users.find((user) => user.id === event.user_id)?.nombre || 'Rostro reconocido')
+            : 'Rostro no reconocido',
+          time: event.created_at,
+          match: `${Math.round(event.similarity * 100)}%`,
+          status: event.recognized ? 'success' : 'failed',
+        })))
+      } catch {
+        setRecognitionNotice('No se pudieron cargar las métricas desde Supabase.')
+        setValidationHistory(readStorage<Validation[]>('veris_validation_history', []))
+      }
+    }
+    void loadDashboardData()
   }, [])
 
   useEffect(() => {
@@ -144,6 +160,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
     const next = [entry, ...validationHistory].slice(0, 50)
     setValidationHistory(next)
     localStorage.setItem('veris_validation_history', JSON.stringify(next))
+    void getDashboardStats().then(setDashboardStats).catch(() => undefined)
   }
 
   const selectSection = (section: string) => {
@@ -299,16 +316,18 @@ export default function Dashboard({ onLogout }: DashboardProps) {
 
   const formatDocumentSize = (size: number) => `${Math.max(1, Math.round(size / 1024))} KB`
 
-  const recognizedCount = validationHistory.filter((item) => item.status === 'success').length
-  const failedCount = validationHistory.filter((item) => item.status === 'failed').length
-  const recognitionRate = validationHistory.length
+  const recognizedCount = dashboardStats?.recognized_count ?? validationHistory.filter((item) => item.status === 'success').length
+  const failedCount = dashboardStats?.unrecognized_count ?? validationHistory.filter((item) => item.status === 'failed').length
+  const validationCount = dashboardStats?.validation_count ?? validationHistory.length
+  const recognitionRate = dashboardStats?.recognition_rate ?? (validationHistory.length
     ? Math.round((recognizedCount / validationHistory.length) * 100)
-    : 0
+    : 0)
   const chartValues = Array.from({ length: 7 }, (_, index) => {
     const day = new Date()
     day.setDate(day.getDate() - (6 - index))
     const label = day.toLocaleDateString('es-PE', { weekday: 'short' }).slice(0, 3)
-    const count = validationHistory.filter((item) => {
+    const dayKey = day.toISOString().slice(0, 10)
+    const count = dashboardStats?.activity_by_day[dayKey] ?? validationHistory.filter((item) => {
       const itemDate = new Date(item.time)
       return itemDate.toDateString() === day.toDateString()
     }).length
@@ -400,13 +419,13 @@ export default function Dashboard({ onLogout }: DashboardProps) {
 
           <section className={`dashboard-overview ${activeSection === 'resumen' ? '' : 'dashboard-section-hidden'}`} aria-label="Resumen de métricas">
             <div className="metric-card metric-card--success"><span className="metric-label">Personas registradas</span><strong>{registeredUsers.length}</strong><small><UsersRound size={12} /> perfiles biométricos</small></div>
-            <div className="metric-card"><span className="metric-label">Validaciones</span><strong>{validationHistory.length}</strong><small><Activity size={12} /> intentos procesados</small></div>
+            <div className="metric-card"><span className="metric-label">Validaciones</span><strong>{validationCount}</strong><small><Activity size={12} /> intentos procesados</small></div>
             <div className="metric-card"><span className="metric-label">Tasa de reconocimiento</span><strong>{recognitionRate}%</strong><small><CheckCircle2 size={12} /> coincidencias exitosas</small></div>
             <div className="metric-card"><span className="metric-label">No reconocidos</span><strong>{failedCount}</strong><small><Clock3 size={12} /> requieren registro</small></div>
           </section>
 
           <section className={`analytics-grid ${activeSection === 'resumen' ? '' : 'dashboard-section-hidden'}`} aria-label="Analítica facial">
-            <div className="panel analytics-panel"><div className="panel-heading compact-heading"><div><span className="section-kicker">ACTIVIDAD</span><h2>Validaciones de los últimos 7 días</h2></div><BarChart3 size={19} /></div><div className="bar-chart">{chartValues.map((item) => <div className="bar-column" key={item.label}><span>{item.count}</span><div className="bar-track"><i style={{ height: `${Math.max((item.count / maxChartValue) * 100, item.count ? 12 : 4)}%` }} /></div><small>{item.label}</small></div>)}</div></div>
+            <div className="panel analytics-panel"><div className="panel-heading compact-heading"><div><span className="section-kicker">ACTIVIDAD</span><h2>Actividad de los últimos 7 días</h2></div><BarChart3 size={19} /></div><div className="bar-chart">{chartValues.map((item) => <div className="bar-column" key={item.label}><span>{item.count}</span><div className="bar-track"><i style={{ height: `${Math.max((item.count / maxChartValue) * 100, item.count ? 12 : 4)}%` }} /></div><small>{item.label}</small></div>)}</div></div>
             <div className="panel analytics-panel"><div className="panel-heading compact-heading"><div><span className="section-kicker">ESTADO</span><h2>Rendimiento del servicio</h2></div><Server size={19} /></div><div className="service-health"><div><span className="health-icon"><CheckCircle2 size={17} /></span><div><b>API de reconocimiento</b><small>{appConfig.usesDemoRecognition ? 'API no configurada' : 'Conectada y operativa'}</small></div><strong>{appConfig.usesDemoRecognition ? '—' : '100%'}</strong></div><div><span className="health-icon"><Database size={17} /></span><div><b>Persistencia de usuarios</b><small>{registeredUsers.length ? 'Datos cargados desde Supabase' : 'Sin perfiles en Supabase'}</small></div><strong>{registeredUsers.length ? 'OK' : '—'}</strong></div></div></div>
           </section>
 

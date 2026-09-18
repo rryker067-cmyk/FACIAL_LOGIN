@@ -200,6 +200,29 @@ create index usuarios_email_idx on public.usuarios (lower(email));
 create index usuarios_dni_idx on public.usuarios (dni);
 ```
 
+Para que el resumen operativo sea persistente y consistente entre sesiones,
+también debe existir la tabla de eventos de reconocimiento:
+
+```sql
+create table public.recognition_events (
+    id uuid primary key default gen_random_uuid(),
+    user_id uuid references public.usuarios(id) on delete set null,
+    similarity numeric(6,5) not null default 0,
+    recognized boolean not null,
+    source varchar(30) not null default 'dashboard',
+    created_at timestamptz not null default now()
+);
+
+create index recognition_events_created_at_idx
+    on public.recognition_events (created_at desc);
+```
+
+El backend registra los intentos reconocidos y no reconocidos desde los
+endpoints de reconocimiento facial y login facial. El endpoint
+`GET /api/v1/dashboard/stats` calcula desde Supabase los perfiles, intentos,
+porcentaje de coincidencias, no reconocidos y actividad diaria combinando altas
+de usuarios y validaciones.
+
 La contraseña no se almacena en `usuarios`. Las credenciales pertenecen a
 Supabase Auth. La columna `face_embedding` contiene el vector generado por
 ArcFace y normalizado con norma L2.
@@ -533,27 +556,14 @@ El dashboard contiene las secciones:
 
 ### Estado actual de persistencia
 
-Los perfiles y fotografías sí se consultan desde Supabase. En cambio, el
-historial y parte de las validaciones de sesión todavía se almacenan en
-`localStorage`, mientras la documentación y archivos del navegador usan
-IndexedDB. Esto significa que esas métricas no son todavía globales entre
-dispositivos.
-
-Para hacerlas empresariales y multiusuario se recomienda crear:
-
-```sql
-create table public.recognition_events (
-    id uuid primary key default gen_random_uuid(),
-    user_id uuid references public.usuarios(id) on delete set null,
-    similarity numeric(6,5),
-    recognized boolean not null,
-    source varchar(30) not null default 'dashboard',
-    created_at timestamptz not null default now()
-);
-```
-
-Después se debería insertar el evento desde FastAPI y exponer un endpoint de
-consulta para que las métricas del dashboard sean completamente dinámicas.
+Los perfiles, fotografías y métricas de reconocimiento se consultan desde
+Supabase. Los eventos se almacenan en `recognition_events`, por lo que el
+historial no se pierde al cerrar la página ni depende del navegador usado.
+La documentación cargada por el operador se conserva en IndexedDB con el
+contenido binario del archivo, de modo que permanece disponible después de
+cerrar y volver a abrir la página en el mismo navegador y perfil. Para
+compartir documentación entre dispositivos debe migrarse ese flujo a un bucket
+de Supabase Storage con políticas de acceso equivalentes.
 
 ## 16. Flujo completo de reconocimiento
 

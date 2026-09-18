@@ -26,6 +26,12 @@ async def recognize_face(payload: FaceRecognitionRequest):
 
         similarity = float(match.get("similarity", 0)) if match else 0
         if not match or similarity < 0.75:
+            await UserRepository.record_recognition_event(
+                user_id=None,
+                similarity=similarity,
+                recognized=False,
+                source="dashboard",
+            )
             return {
                 "nombre": "",
                 "apellido": "",
@@ -37,6 +43,12 @@ async def recognize_face(payload: FaceRecognitionRequest):
                 "similarity": 0,
             }
 
+        await UserRepository.record_recognition_event(
+            user_id=str(match.get("id")) if match.get("id") else None,
+            similarity=similarity,
+            recognized=True,
+            source="dashboard",
+        )
         return {
             "nombre": match.get("nombre", ""),
             "apellido": match.get("apellido", ""),
@@ -54,3 +66,8 @@ async def recognize_face(payload: FaceRecognitionRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error en reconocimiento facial: {str(err)}"
         )
+
+
+@api_router.get("/dashboard/stats")
+async def dashboard_stats():
+    return await UserRepository.get_dashboard_stats()

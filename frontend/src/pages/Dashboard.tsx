@@ -29,6 +29,7 @@ import {
   Edit3,
   Trash2,
   Save,
+  LogOut,
 } from 'lucide-react'
 import Field from '../components/Field'
 import { appConfig } from '../config/env'
@@ -514,12 +515,12 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
             <button className="icon-button" aria-label="Ayuda"><CircleHelp size={19} /></button>
             <button className="icon-button notification-button" aria-label="Notificaciones" onClick={() => setNotificationsOpen((current) => !current)}><Bell size={19} />{alerts.length > 0 && <i />}</button>
             
-            {/* Botón de perfil con cierre de sesión integrado */}
-            <div className="profile" onClick={onLogout} title="Hacer clic para cerrar sesión" style={{ cursor: 'pointer' }}>
+            <div className="profile">
               <div className="profile-avatar">{(user?.name || 'U').split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase()}</div>
-              <div><b>{user?.name || 'Usuario'}</b><span>{user?.role || 'Sesión activa'} (Salir)</span></div>
+              <div><b>{user?.name || 'Usuario'}</b><span>{user?.role || 'Sesión activa'}</span></div>
               <ChevronDown size={15} />
             </div>
+            <button className="logout-button" type="button" onClick={onLogout} title="Cerrar sesión"><LogOut size={16} /><span>Cerrar sesión</span></button>
           </div>
         </header>
 

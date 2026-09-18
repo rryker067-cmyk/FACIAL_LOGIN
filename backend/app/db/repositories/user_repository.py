@@ -10,6 +10,12 @@ from backend.app.db.supabase_client import supabase
 logger = logging.getLogger(__name__)
 
 
+def _is_missing_recognition_events(error: Exception) -> bool:
+    """Recognize the Supabase/PostgREST error returned before the audit table exists."""
+    message = str(error)
+    return "PGRST205" in message or "recognition_events" in message and "schema cache" in message
+
+
 class UserRepository:
 
     @staticmethod
@@ -67,8 +73,11 @@ class UserRepository:
                 "message": None if recognized else "Rostro no reconocido.",
                 "error_code": None if recognized else "FACE_NOT_RECOGNIZED",
             }).execute()
-        except Exception:
-            logger.exception("No se pudo persistir el evento de reconocimiento facial")
+        except Exception as err:
+            if _is_missing_recognition_events(err):
+                logger.warning("Auditoría no disponible: falta public.recognition_events en Supabase.")
+            else:
+                logger.exception("No se pudo persistir el evento de reconocimiento facial")
 
     @staticmethod
     async def record_auth_event(
@@ -102,8 +111,11 @@ class UserRepository:
                 "metadata": metadata,
             }
             supabase.table("recognition_events").insert(payload).execute()
-        except Exception:
-            logger.exception("No se pudo persistir el evento de auditoría")
+        except Exception as err:
+            if _is_missing_recognition_events(err):
+                logger.warning("Auditoría no disponible: falta public.recognition_events en Supabase.")
+            else:
+                logger.exception("No se pudo persistir el evento de auditoría")
 
     @staticmethod
     async def list_auth_events(limit: int = 100, user_id: str | None = None) -> list[dict[str, Any]]:
@@ -117,8 +129,14 @@ class UserRepository:
         ).order("created_at", desc=True).limit(min(max(limit, 1), 500))
         if user_id:
             query = query.eq("user_id", str(user_id))
-        response = query.execute()
-        return response.data or []
+        try:
+            response = query.execute()
+            return response.data or []
+        except Exception as err:
+            if _is_missing_recognition_events(err):
+                logger.warning("Historial vacío: falta public.recognition_events en Supabase.")
+                return []
+            raise
 
     @staticmethod
     async def find_face_match_for_user(user_id: str, query_embedding: list[float]) -> dict | None:
@@ -174,8 +192,11 @@ class UserRepository:
                     "id,user_id,similarity,recognized,source,created_at"
                 ).order("created_at", desc=True).limit(1000).execute()
                 events = response.data or []
-            except Exception:
-                logger.exception("No se pudieron consultar los eventos de reconocimiento")
+            except Exception as err:
+                if _is_missing_recognition_events(err):
+                    logger.warning("Métricas parciales: falta public.recognition_events en Supabase.")
+                else:
+                    logger.exception("No se pudieron consultar los eventos de reconocimiento")
 
         recognized_count = sum(1 for event in events if event.get("recognized"))
         failed_count = len(events) - recognized_count

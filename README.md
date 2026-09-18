@@ -20,9 +20,13 @@ La documentación técnica completa está en
 
 El inicio de sesión con correo y contraseña se valida en el backend mediante
 `supabase.auth.sign_in_with_password`; ya no existen credenciales hardcodeadas en
-el frontend. Configura `SUPABASE_URL` y `SUPABASE_KEY` en `backend/.env` usando
-la URL y la clave anónima de tu proyecto Supabase, y crea los usuarios desde
-Supabase Auth.
+el frontend. Configura `SUPABASE_URL` y `SUPABASE_KEY` en Render usando la URL y
+la clave `service_role` de tu proyecto Supabase. Esta clave solo debe existir en
+el backend; nunca la expongas en variables `VITE_*` ni en el navegador.
+
+Antes del primer despliegue, ejecuta [supabase/recognition_events.sql](supabase/recognition_events.sql)
+en el SQL Editor de Supabase. Ese script crea la tabla de auditoría que registra
+los accesos correctos, los intentos fallidos y las verificaciones faciales.
 
 El inicio de sesión facial calcula el embedding en el backend y consulta la
 función RPC `match_face_1n` sobre la tabla `usuarios`. El acceso solo se concede

@@ -200,6 +200,8 @@ button { border: 0; }
 .profile b { color: var(--ink); font-size: 11px; }
 .profile span { margin-top: 2px; color: #7a8d9e; font-size: 9px; }
 .profile > svg { margin-left: 6px; color: #9aa9b9; }
+.logout-button { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; border: 1px solid #f0d6d6; border-radius: 8px; color: #a34545; background: #fff8f8; cursor: pointer; font-size: 10px; transition: background .15s, border-color .15s; }
+.logout-button:hover { border-color: #dfa9a9; background: #fff0f0; }
 .menu-button { display: none; }
 
 .content-wrap { max-width: 1220px; margin: 0 auto; padding: 49px 46px 64px; }
@@ -971,6 +973,8 @@ button { border: 0; }
   .topbar-actions { gap: 2px; }
   .profile { margin-left: 4px; padding-left: 9px; }
   .profile > div:nth-child(2), .profile > svg, .topbar-actions > .icon-button:first-child { display: none; }
+  .logout-button { padding: 0 8px; }
+  .logout-button span { display: none; }
   .content-wrap { padding: 30px 16px 40px; }
   .page-heading h1 { font-size: 29px; }
   .panel { padding: 20px 17px; }

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ShieldCheck, ScanFace, Lock, Cpu, ArrowRight, Activity, Zap, CheckCircle, Terminal } from 'lucide-react';
+import { ShieldCheck, ScanFace, Lock, Cpu, ArrowRight, Activity, Zap, CheckCircle, Terminal, Menu, X } from 'lucide-react';
 import './Home.css';
 
 interface HomeProps {
@@ -9,6 +9,7 @@ interface HomeProps {
 export default function Home({ onGoToLogin }: HomeProps) {
   // Efecto dinámico de scroll para mover elementos de fondo suavemente
   const [scrollY, setScrollY] = useState(0);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -36,14 +37,17 @@ export default function Home({ onGoToLogin }: HomeProps) {
           <ShieldCheck className="text-emerald-400" size={24} />
           <span>VERIS<span className="logo-badge">ID</span></span>
         </div>
-        <div className="nav-links">
-          <a href="#features">Características</a>
-          <a href="#stats">Métricas</a>
-          <a href="#tech">Stack</a>
-          <a href="#security">Seguridad</a>
+        <div className={`nav-links ${mobileMenuOpen ? 'nav-links--open' : ''}`}>
+          <a href="#features" onClick={() => setMobileMenuOpen(false)}>Características</a>
+          <a href="#stats" onClick={() => setMobileMenuOpen(false)}>Métricas</a>
+          <a href="#tech" onClick={() => setMobileMenuOpen(false)}>Stack</a>
+          <a href="#security" onClick={() => setMobileMenuOpen(false)}>Seguridad</a>
         </div>
-        <button type="button" onClick={onGoToLogin} className="home-login-nav-btn">
+        <button type="button" onClick={onGoToLogin} className="home-login-nav-btn" aria-label="Iniciar sesión">
           Iniciar Sesión <ArrowRight size={14} />
+        </button>
+        <button type="button" className="home-menu-btn" aria-label={mobileMenuOpen ? 'Cerrar navegación' : 'Abrir navegación'} aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen((current) => !current)}>
+          {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
         </button>
       </nav>
 
@@ -55,7 +59,7 @@ export default function Home({ onGoToLogin }: HomeProps) {
         </div>
         <h1>Identidad digital fluida.<br /><span>Protección sin fricciones.</span></h1>
         <p>
-          Una plataforma corporativa diseñada para la máxima protección de accesos mediante reconocimiento facial avanzado, cifrado de grado militar y control biométrico en tiempo real.
+          Una plataforma corporativa para gestionar accesos mediante reconocimiento facial, controles de seguridad y trazabilidad operativa en tiempo real.
         </p>
         <div className="hero-actions">
           <button type="button" onClick={onGoToLogin} className="hero-btn-primary">
@@ -138,7 +142,7 @@ export default function Home({ onGoToLogin }: HomeProps) {
           <div className="bento-card">
             <div className="bento-icon-box"><Cpu size={24} /></div>
             <h3>Procesamiento Ultra Rápido</h3>
-            <p>Construido con React, TypeScript y Tailwind para ofrecer transiciones fluidas en milisegundos.</p>
+            <p>Construido con React, TypeScript y una interfaz optimizada para ofrecer transiciones fluidas y respuestas claras.</p>
           </div>
 
           {/* Tarjeta 4: Monitoreo */}

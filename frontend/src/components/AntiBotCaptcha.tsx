@@ -57,10 +57,11 @@ export default function AntiBotCaptcha({ onVerified }: AntiBotProps) {
       </div>
       
       <div className="antibot-body">
-        <div className="antibot-math">
+        <div className="antibot-math" aria-label={`Resuelve ${num1} más ${num2}`}>
           {num1} + {num2} = ?
         </div>
         <input 
+          aria-label="Resultado de la verificación anti-bot"
           type="number" 
           value={userAnswer}
           onChange={handleVerify}

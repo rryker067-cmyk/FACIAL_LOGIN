@@ -10,6 +10,13 @@
   padding: 1.5rem;
 }
 
+@keyframes loginCardIn {
+  from { opacity: 0; transform: translateY(18px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.login-card { animation: loginCardIn .55s cubic-bezier(.2, .8, .2, 1) both; }
+
 .login-card {
   background-color: #0b1120;
   border: 1px solid rgba(31, 41, 55, 0.9);
@@ -174,6 +181,30 @@
   color: #ffffff;
   font-size: 0.85rem;
   transition: all 0.2s ease;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 0.75rem;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  color: #6b7280;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.password-toggle:hover,
+.password-toggle:focus-visible {
+  color: #d1d5db;
+  background: rgba(55, 65, 81, 0.7);
+}
+
+.login-input-wrapper:has(.password-toggle) .login-input {
+  padding-right: 3rem;
 }
 
 .login-input::placeholder {

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Fingerprint, ShieldCheck, Lock, User, Mail, Loader2, ArrowLeft, ScanFace } from 'lucide-react';
+import { Fingerprint, ShieldCheck, Lock, User, Mail, Loader2, ArrowLeft, ScanFace, Eye, EyeOff } from 'lucide-react';
 import AntiBotCaptcha from '../components/AntiBotCaptcha';
 import FacialModal from '../components/FacialModal'; // <--- Importamos el componente
 import { promptGoogleAccountSelection } from '../services/googleAuthService';
@@ -19,6 +19,7 @@ export default function Login({ onLoginSuccess, onBackToHome }: LoginProps) {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isHumanVerified, setIsHumanVerified] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   
   // Estado para controlar la ventana modal de biometría facial
   const [showFacialModal, setShowFacialModal] = useState(false);
@@ -168,7 +169,7 @@ export default function Login({ onLoginSuccess, onBackToHome }: LoginProps) {
             <div className="login-input-wrapper">
               <span className="login-input-icon"><Lock size={16} /></span>
               <input 
-                type="password" 
+                type={showPassword ? 'text' : 'password'}
                 value={password} 
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
@@ -176,6 +177,9 @@ export default function Login({ onLoginSuccess, onBackToHome }: LoginProps) {
                 required
                 disabled={isLoading}
               />
+              <button type="button" className="password-toggle" aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'} onClick={() => setShowPassword((current) => !current)}>
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
             </div>
           </div>
 

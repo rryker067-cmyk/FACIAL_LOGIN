@@ -1,5 +1,5 @@
 
-import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react'
+import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Bell,
   Camera,
@@ -66,6 +66,23 @@ const loadDocuments = async (): Promise<StoredDocument[]> => {
   })
 }
 
+const getDocumentKindFromName = (name: string, type = ''): string => {
+  const lowerName = name.toLowerCase()
+  if (type.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(lowerName)) return 'image'
+  if (type === 'application/pdf' || lowerName.endsWith('.pdf')) return 'pdf'
+  if (type.includes('word') || lowerName.endsWith('.doc') || lowerName.endsWith('.docx')) return 'word'
+  if (type.includes('sheet') || lowerName.endsWith('.xls') || lowerName.endsWith('.xlsx')) return 'excel'
+  if (type.includes('powerpoint') || lowerName.endsWith('.ppt') || lowerName.endsWith('.pptx')) return 'powerpoint'
+  return 'other'
+}
+
+const getDocumentKind = (file: Pick<File, 'name' | 'type'>): string => getDocumentKindFromName(file.name, file.type)
+
+const isAllowedDocumentationFile = (file: File): boolean => {
+  const kind = getDocumentKind(file)
+  return ['image', 'pdf', 'word', 'excel', 'powerpoint'].includes(kind)
+}
+
 const storeDocument = async (file: File): Promise<StoredDocument> => {
   const document: StoredDocument = {
     id: crypto.randomUUID(),
@@ -79,6 +96,15 @@ const storeDocument = async (file: File): Promise<StoredDocument> => {
   return new Promise((resolve, reject) => {
     const request = db.transaction(DOCUMENT_STORE, 'readwrite').objectStore(DOCUMENT_STORE).put(document)
     request.onsuccess = () => resolve(document)
+    request.onerror = () => reject(request.error)
+  })
+}
+
+const deleteStoredDocument = async (id: string): Promise<void> => {
+  const db = await openDocumentDb()
+  return new Promise((resolve, reject) => {
+    const request = db.transaction(DOCUMENT_STORE, 'readwrite').objectStore(DOCUMENT_STORE).delete(id)
+    request.onsuccess = () => resolve()
     request.onerror = () => reject(request.error)
   })
 }
@@ -114,6 +140,11 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
   const [registrationConfidence, setRegistrationConfidence] = useState(0)
   const [documents, setDocuments] = useState<StoredDocument[]>([])
   const [documentError, setDocumentError] = useState<string | null>(null)
+  const [documentFilter, setDocumentFilter] = useState<'all' | 'pdf' | 'image' | 'word' | 'excel' | 'powerpoint'>('all')
+  const [selectedDocument, setSelectedDocument] = useState<StoredDocument | null>(null)
+  const [pendingDocumentUpload, setPendingDocumentUpload] = useState<File | null>(null)
+  const [pendingDocumentDelete, setPendingDocumentDelete] = useState<StoredDocument | null>(null)
+  const [documentActionBusy, setDocumentActionBusy] = useState(false)
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([])
   const [selectedUser, setSelectedUser] = useState<FacialUser | null>(null)
   const [userAction, setUserAction] = useState<'edit' | 'delete'>('edit')
@@ -123,10 +154,31 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
   const [verifyBusy, setVerifyBusy] = useState(false)
   const [verifyError, setVerifyError] = useState<string | null>(null)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
+  const [globalSearch, setGlobalSearch] = useState('')
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const verifyVideoRef = useRef<HTMLVideoElement>(null)
   const verifyStreamRef = useRef<MediaStream | null>(null)
+
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      setSidebarOpen(false)
+      setNotificationsOpen(false)
+      setHelpOpen(false)
+      if (!documentActionBusy) {
+        setPendingDocumentUpload(null)
+        setPendingDocumentDelete(null)
+      }
+      if (selectedUser) {
+        closeVerifyCamera()
+        setSelectedUser(null)
+      }
+    }
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [documentActionBusy, selectedUser])
 
   useEffect(() => () => {
     streamRef.current?.getTracks().forEach((track) => track.stop())
@@ -252,9 +304,15 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     }
   }
 
+  const documentationPreviewUrl = useMemo(() => selectedDocument ? URL.createObjectURL(selectedDocument.blob) : null, [selectedDocument])
+
   useEffect(() => {
     loadDocuments().then(setDocuments).catch(() => setDocumentError('No se pudo cargar la documentación guardada.'))
   }, [])
+
+  useEffect(() => () => {
+    if (documentationPreviewUrl) URL.revokeObjectURL(documentationPreviewUrl)
+  }, [documentationPreviewUrl])
 
   useEffect(() => {
     if (!isCameraOpen) {
@@ -402,17 +460,54 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     event.target.value = ''
     if (!file) return
 
-    if (!file.type.startsWith('image/') && file.type !== 'application/pdf') {
-      setDocumentError('Solo se permiten archivos PDF o imágenes.')
+    if (!isAllowedDocumentationFile(file)) {
+      setDocumentError('Solo se permiten archivos PDF, Word, Excel, PowerPoint, PNG y otras imágenes.')
       return
     }
 
+    setDocumentError(null)
+    setPendingDocumentUpload(file)
+  }
+
+  const confirmDocumentationUpload = async () => {
+    if (!pendingDocumentUpload) return
+    setDocumentActionBusy(true)
     try {
-      const saved = await storeDocument(file)
+      const saved = await storeDocument(pendingDocumentUpload)
       setDocuments((current) => [saved, ...current])
+      setSelectedDocument(saved)
+      setPendingDocumentUpload(null)
       setDocumentError(null)
     } catch {
       setDocumentError('No se pudo guardar el documento de forma persistente.')
+    } finally {
+      setDocumentActionBusy(false)
+    }
+  }
+
+  const confirmDocumentationDelete = async () => {
+    if (!pendingDocumentDelete) return
+    setDocumentActionBusy(true)
+    try {
+      await deleteStoredDocument(pendingDocumentDelete.id)
+      setDocuments((current) => current.filter((document) => document.id !== pendingDocumentDelete.id))
+      setSelectedDocument((current) => current?.id === pendingDocumentDelete.id ? null : current)
+      setPendingDocumentDelete(null)
+      setDocumentError(null)
+    } catch {
+      setDocumentError('No se pudo eliminar el documento guardado.')
+    } finally {
+      setDocumentActionBusy(false)
+    }
+  }
+
+  const openDocumentationInNewTab = (document: StoredDocument) => {
+    const url = URL.createObjectURL(document.blob)
+    const win = window.open(url, '_blank', 'noopener,noreferrer')
+    if (win) {
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } else {
+      URL.revokeObjectURL(url)
     }
   }
 
@@ -422,10 +517,38 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     anchor.href = url
     anchor.download = document.name
     anchor.click()
-    URL.revokeObjectURL(url)
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
 
   const formatDocumentSize = (size: number) => `${Math.max(1, Math.round(size / 1024))} KB`
+
+  const getDocumentLabel = (document: StoredDocument) => {
+    const kind = getDocumentKindFromName(document.name, document.type)
+    if (kind === 'pdf') return 'PDF'
+    if (kind === 'image') return 'Imagen'
+    if (kind === 'word') return 'Word'
+    if (kind === 'excel') return 'Excel'
+    if (kind === 'powerpoint') return 'PowerPoint'
+    return 'Archivo'
+  }
+
+  const normalizedSearch = globalSearch.trim().toLocaleLowerCase('es')
+  const matchesSearch = (value: string) => !normalizedSearch || value.toLocaleLowerCase('es').includes(normalizedSearch)
+  const filteredRegisteredUsers = registeredUsers.filter((registeredUser) => matchesSearch(`${registeredUser.nombre} ${registeredUser.apellido} ${registeredUser.dni || ''} ${registeredUser.email || ''}`))
+  const filteredAuditEvents = auditEvents.filter((event) => matchesSearch(`${event.event_type} ${event.source} ${event.message || ''} ${event.error_code || ''} ${event.user_id || ''}`))
+  const filteredDocuments = documents.filter((document) => {
+    if (documentFilter === 'all') return true
+    return getDocumentKindFromName(document.name, document.type) === documentFilter
+  }).filter((document) => matchesSearch(`${document.name} ${getDocumentLabel(document)}`))
+
+  const documentSummary = {
+    total: documents.length,
+    pdf: documents.filter((document) => getDocumentKindFromName(document.name, document.type) === 'pdf').length,
+    image: documents.filter((document) => getDocumentKindFromName(document.name, document.type) === 'image').length,
+    word: documents.filter((document) => getDocumentKindFromName(document.name, document.type) === 'word').length,
+    excel: documents.filter((document) => getDocumentKindFromName(document.name, document.type) === 'excel').length,
+    powerpoint: documents.filter((document) => getDocumentKindFromName(document.name, document.type) === 'powerpoint').length,
+  }
 
   const recognizedCount = dashboardStats?.recognized_count ?? validationHistory.filter((item) => item.status === 'success').length
   const failedCount = dashboardStats?.unrecognized_count ?? validationHistory.filter((item) => item.status === 'failed').length
@@ -512,9 +635,9 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
         )}
         <header className="topbar">
           <button className="icon-button menu-button" aria-label="Abrir menú" onClick={() => setSidebarOpen(true)}><Menu size={21} /></button>
-          <div className="topbar-search"><Search size={17} /><input aria-label="Buscar" placeholder="Buscar en el registro..." /></div>
+          <div className="topbar-search"><Search size={17} /><input aria-label="Buscar en el registro" value={globalSearch} onChange={(event) => setGlobalSearch(event.target.value)} placeholder="Buscar en el registro..." />{globalSearch && <button type="button" className="topbar-search-clear" aria-label="Limpiar búsqueda" onClick={() => setGlobalSearch('')}><X size={14} /></button>}</div>
           <div className="topbar-actions">
-            <button className="icon-button" aria-label="Ayuda"><CircleHelp size={19} /></button>
+            <button className="icon-button" aria-label="Ayuda" onClick={() => setHelpOpen((current) => !current)}><CircleHelp size={19} /></button>
             <button className="icon-button notification-button" aria-label="Notificaciones" onClick={() => setNotificationsOpen((current) => !current)}><Bell size={19} />{alerts.length > 0 && <i />}</button>
             
             <div className="profile">
@@ -722,7 +845,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
               </div>
 
               <div className="history-list">
-                {auditEvents.length ? auditEvents.map((row) => (
+                {filteredAuditEvents.length ? filteredAuditEvents.map((row) => (
                   <div className="history-item" key={row.id}>
                     <div className="history-name">
                       <div className={`mini-avatar ${row.success ? '' : 'mini-avatar--failed'}`}>{row.success ? 'OK' : '!'}</div>
@@ -734,7 +857,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                     </div>
                     <strong className={row.success ? '' : 'history-result--failed'}>{row.similarity == null ? '—' : `${Math.round(row.similarity * 100)}%`}</strong>
                   </div>
-                )) : <div className="empty-state">El historial aparecerá después de la primera validación.</div>}
+                )) : <div className="empty-state">{globalSearch ? 'No hay eventos que coincidan con la búsqueda.' : 'El historial aparecerá después de la primera validación.'}</div>}
               </div>
             </div>
 
@@ -762,7 +885,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
 
           <section className={`panel dashboard-section ${activeSection === 'personas' ? '' : 'dashboard-section-hidden'}`} id="personas">
             <div className="panel-heading compact-heading"><div><span className="section-kicker">DIRECTORIO</span><h2>Personas registradas</h2></div><span className="status-pill">{registeredUsers.length} perfiles</span></div>
-            {registeredUsers.length ? <div className="people-grid">{registeredUsers.map((user, index) => <div className="person-card person-card--interactive" key={user.id || `${user.dni}-${index}`}><button className="person-card-main" type="button" onClick={() => openUserVerification(user)}><div className="person-photo">{user.imagen_url ? <img src={user.imagen_url} alt={`Foto de ${user.nombre} ${user.apellido}`} /> : <span>{`${user.nombre?.[0] || ''}${user.apellido?.[0] || ''}`.toUpperCase()}</span>}</div><div><b>{user.nombre} {user.apellido}</b><span>{user.dni || 'Sin DNI'} · {user.email || 'Sin correo'}</span></div><Edit3 size={17} /></button><button className="icon-button person-card-delete" type="button" aria-label={`Eliminar a ${user.nombre} ${user.apellido}`} title="Eliminar persona" onClick={() => openUserVerification(user, 'delete')}><Trash2 size={17} /></button></div>)}</div> : <div className="empty-state">Todavía no hay personas registradas. Usa “Reconocer rostro” para crear el primer perfil.</div>}
+            {filteredRegisteredUsers.length ? <div className="people-grid">{filteredRegisteredUsers.map((user, index) => <div className="person-card person-card--interactive" key={user.id || `${user.dni}-${index}`}><button className="person-card-main" type="button" onClick={() => openUserVerification(user)}><div className="person-photo">{user.imagen_url ? <img src={user.imagen_url} alt={`Foto de ${user.nombre} ${user.apellido}`} /> : <span>{`${user.nombre?.[0] || ''}${user.apellido?.[0] || ''}`.toUpperCase()}</span>}</div><div><b>{user.nombre} {user.apellido}</b><span>{user.dni || 'Sin DNI'} · {user.email || 'Sin correo'}</span></div><Edit3 size={17} /></button><button className="icon-button person-card-delete" type="button" aria-label={`Eliminar a ${user.nombre} ${user.apellido}`} title="Eliminar persona" onClick={() => openUserVerification(user, 'delete')}><Trash2 size={17} /></button></div>)}</div> : <div className="empty-state">{globalSearch ? 'No hay personas que coincidan con la búsqueda.' : 'Todavía no hay personas registradas. Usa “Reconocer rostro” para crear el primer perfil.'}</div>}
           </section>
 
           {selectedUser && <div className="user-editor-backdrop" role="presentation" onClick={() => { closeVerifyCamera(); setSelectedUser(null) }}>
@@ -777,23 +900,188 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
 
           <section className={`dashboard-info-grid ${activeSection !== 'documentacion' && activeSection !== 'integraciones' && activeSection !== 'seguridad' ? 'dashboard-section-hidden' : ''}`}>
             <div className={`panel dashboard-section ${activeSection === 'documentacion' ? '' : 'dashboard-section-hidden'}`} id="documentacion">
-              <div className="panel-heading compact-heading"><div><span className="section-kicker">GUÍA Y ARCHIVOS</span><h2>Documentación</h2></div><BookOpen size={19} /></div>
-              <div className="info-cards"><div><b>1. Captura una imagen</b><span>Usa una foto frontal, nítida y con buena iluminación.</span></div><div><b>2. Verifica los datos</b><span>El sistema consulta la coincidencia facial y completa el formulario.</span></div><div><b>3. Guarda el registro</b><span>Los perfiles y documentos quedan disponibles para futuras validaciones.</span></div></div>
-              <div className="capture-actions">
-                <label className="button button--dark"><FileImage size={16} /> Subir PDF o imagen<input type="file" accept="application/pdf,image/*" onChange={handleDocumentationUpload} /></label>
-                <span className="capture-note"><ShieldCheck size={15} /> Se conserva aunque cierres la página.</span>
+              <div className="panel-heading compact-heading"><div><span className="section-kicker">GUÍA Y ARCHIVOS</span><h2>Documentación corporativa</h2></div><BookOpen size={19} /></div>
+
+              <div className="info-cards" style={{ marginBottom: 16 }}>
+                <div><b>1. Centralización</b><span>Todo el material operativo se guarda en un repositorio interno del dashboard.</span></div>
+                <div><b>2. Soporte completo</b><span>PDF, imágenes, Office y presentaciones quedan disponibles para revisión.</span></div>
+                <div><b>3. Acceso seguro</b><span>Se permiten abrir, verificar y descargar documentos sin salir del entorno.</span></div>
+                <div><b>4. Gestión de archivos</b><span>Usa la papelera de cada archivo para eliminarlo. La subida y el borrado siempre requieren confirmación.</span></div>
               </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 12, marginBottom: 18 }}>
+                {[
+                  { key: 'all', label: 'Todos', value: documentSummary.total },
+                  { key: 'pdf', label: 'PDF', value: documentSummary.pdf },
+                  { key: 'image', label: 'Imágenes', value: documentSummary.image },
+                  { key: 'word', label: 'Word', value: documentSummary.word },
+                  { key: 'excel', label: 'Excel', value: documentSummary.excel },
+                  { key: 'powerpoint', label: 'PowerPoint', value: documentSummary.powerpoint },
+                ].map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setDocumentFilter(item.key as typeof documentFilter)}
+                    className={`button ${documentFilter === item.key ? 'button--dark' : 'button--outline'}`}
+                    style={{ justifyContent: 'space-between', width: '100%' }}
+                  >
+                    <span>{item.label}</span>
+                    <strong>{item.value}</strong>
+                  </button>
+                ))}
+              </div>
+
+              <div className="capture-actions" style={{ marginBottom: 18 }}>
+                <label className="button button--dark"><FileImage size={16} /> Subir documentos<input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.doc,.docx,.xls,.xlsx,.ppt,.pptx,application/pdf,image/png,image/jpeg,image/webp,image/gif,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation" onChange={handleDocumentationUpload} /></label>
+                <span className="capture-note"><ShieldCheck size={15} /> Se conserva en el navegador para revisión operativa.</span>
+              </div>
+
               {documentError && <p className="recognition-error" role="alert">{documentError}</p>}
-              {documents.length ? <div className="people-grid">{documents.map((document) => <button className="person-card" type="button" key={document.id} onClick={() => downloadDocumentation(document)}><div className="review-avatar">{document.type === 'application/pdf' ? <FileText size={18} /> : <FileImage size={18} />}</div><div><b>{document.name}</b><span>{document.type === 'application/pdf' ? 'PDF' : 'Imagen'} · {formatDocumentSize(document.size)}</span></div><ExternalLink size={17} /></button>)}</div> : <div className="empty-state">No hay documentos guardados. Puedes subir archivos PDF o imágenes.</div>}
+
+              {selectedDocument && (
+                <div style={{ marginBottom: 18, border: '1px solid rgba(148, 163, 184, 0.25)', borderRadius: 12, background: 'rgba(15, 23, 42, 0.92)', padding: 14 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+                    <div>
+                      <div className="section-kicker" style={{ marginBottom: 4 }}>VISTA PREVIA</div>
+                      <b>{selectedDocument.name}</b>
+                    </div>
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                      <button type="button" className="button button--dark" onClick={() => openDocumentationInNewTab(selectedDocument)}><ExternalLink size={15} /> Abrir</button>
+                      <button type="button" className="button button--outline" onClick={() => downloadDocumentation(selectedDocument)}><FileImage size={15} /> Descargar</button>
+                      <button type="button" className="button button--outline" onClick={() => setSelectedDocument(null)}>Cerrar</button>
+                    </div>
+                  </div>
+                  {selectedDocument.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(selectedDocument.name) ? (
+                    <img src={documentationPreviewUrl ?? ''} alt={selectedDocument.name} style={{ width: '100%', maxHeight: 360, objectFit: 'contain', borderRadius: 10, background: '#0b1220', display: 'block' }} />
+                  ) : selectedDocument.type === 'application/pdf' || /\.pdf$/i.test(selectedDocument.name) ? (
+                    <iframe src={documentationPreviewUrl ?? ''} title={selectedDocument.name} style={{ width: '100%', height: 420, borderRadius: 10, border: 'none', background: 'white' }} />
+                  ) : (
+                    <div style={{ display: 'grid', placeItems: 'center', minHeight: 220, border: '1px dashed rgba(148, 163, 184, 0.45)', borderRadius: 10, background: 'rgba(15, 23, 42, 0.72)', textAlign: 'center', padding: 18 }}>
+                      <div style={{ display: 'grid', placeItems: 'center', gap: 12 }}>
+                        <FileText size={28} />
+                        <div>
+                          <b>{selectedDocument.name}</b>
+                          <p style={{ margin: '6px 0 0', color: '#cbd5e1' }}>Este tipo de archivo no admite vista previa embebida en el navegador; puedes abrirlo o descargarlo para revisarlo.</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {filteredDocuments.length ? (
+                <div className="people-grid">
+                  {filteredDocuments.map((document) => (
+                    <div className="person-card document-card" key={document.id}>
+                      <button className="person-card-main" type="button" onClick={() => setSelectedDocument(document)}>
+                        <div className="review-avatar">
+                          {getDocumentKindFromName(document.name, document.type) === 'pdf' ? <FileText size={18} /> : getDocumentKindFromName(document.name, document.type) === 'image' ? <FileImage size={18} /> : <FileText size={18} />}
+                        </div>
+                        <div>
+                          <b>{document.name}</b>
+                          <span>{getDocumentLabel(document)} · {formatDocumentSize(document.size)} · {new Date(document.createdAt).toLocaleDateString('es-PE')}</span>
+                        </div>
+                        <ExternalLink size={17} />
+                      </button>
+                      <button className="icon-button person-card-delete" type="button" aria-label={`Eliminar ${document.name}`} title="Eliminar documento" onClick={() => setPendingDocumentDelete(document)}><Trash2 size={17} /></button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-state">No hay documentos de este tipo cargados. Sube archivos para dejar disponible la documentación del sistema.</div>
+              )}
             </div>
-            <div className={`panel dashboard-section ${activeSection === 'integraciones' ? '' : 'dashboard-section-hidden'}`} id="integraciones"><div className="panel-heading compact-heading"><div><span className="section-kicker">SERVICIOS</span><h2>Integraciones</h2></div><ExternalLink size={19} /></div><div className="integration-list"><div><Database size={17} /><span><b>Supabase</b><small>Persistencia de usuarios y embeddings</small></span><em>{appConfig.usesDemoRecognition ? 'Configurar' : 'Conectado'}</em></div><div><Server size={17} /><span><b>FastAPI</b><small>API de reconocimiento facial</small></span><em>{appConfig.usesDemoRecognition ? 'Demo' : 'Operativo'}</em></div></div></div>
-            <div className={`panel dashboard-section ${activeSection === 'seguridad' ? '' : 'dashboard-section-hidden'}`} id="seguridad"><div className="panel-heading compact-heading"><div><span className="section-kicker">CONTROL</span><h2>Seguridad</h2></div><ShieldCheck size={19} /></div><div className="security-summary"><CheckCircle2 size={18} /><span>Las imágenes se procesan con confirmación explícita y el acceso se registra en el historial.</span></div><div className="security-summary"><ShieldCheck size={18} /><span>Sesión protegida con autenticación facial y token de acceso.</span></div></div>
+            <div className={`panel dashboard-section ${activeSection === 'integraciones' ? '' : 'dashboard-section-hidden'}`} id="integraciones">
+              <div className="panel-heading compact-heading"><div><span className="section-kicker">SERVICIOS</span><h2>Integraciones</h2></div><ExternalLink size={19} /></div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginTop: 14 }}>
+                <div style={{ background: 'rgba(15, 23, 42, 0.72)', border: '1px solid rgba(148, 163, 184, 0.22)', borderRadius: 16, padding: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(14, 165, 233, 0.12)', display: 'grid', placeItems: 'center', color: '#7dd3fc' }}><Database size={18} /></div>
+                      <div>
+                        <b>Supabase</b>
+                        <small style={{ display: 'block', color: '#94a3b8' }}>Base de datos</small>
+                      </div>
+                    </div>
+                    <span className="status-pill">{appConfig.usesDemoRecognition ? 'Configurar' : 'Conectado'}</span>
+                  </div>
+                  <p style={{ margin: 0, color: '#cbd5e1', lineHeight: 1.6 }}>Persistencia de usuarios, autenticación y almacenamiento seguro de metadatos biométricos.</p>
+                </div>
+
+                <div style={{ background: 'rgba(15, 23, 42, 0.72)', border: '1px solid rgba(148, 163, 184, 0.22)', borderRadius: 16, padding: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(16, 185, 129, 0.12)', display: 'grid', placeItems: 'center', color: '#34d399' }}><Server size={18} /></div>
+                      <div>
+                        <b>FastAPI</b>
+                        <small style={{ display: 'block', color: '#94a3b8' }}>Servicio principal</small>
+                      </div>
+                    </div>
+                    <span className="status-pill">{appConfig.usesDemoRecognition ? 'Demo' : 'Operativo'}</span>
+                  </div>
+                  <p style={{ margin: 0, color: '#cbd5e1', lineHeight: 1.6 }}>API de reconocimiento facial, validación y lógica de negocio para la identidad digital corporativa.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className={`panel dashboard-section ${activeSection === 'seguridad' ? '' : 'dashboard-section-hidden'}`} id="seguridad">
+              <div className="panel-heading compact-heading"><div><span className="section-kicker">CONTROL</span><h2>Seguridad</h2></div><ShieldCheck size={19} /></div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginTop: 14 }}>
+                <div style={{ background: 'rgba(15, 23, 42, 0.72)', border: '1px solid rgba(148, 163, 184, 0.22)', borderRadius: 16, padding: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(16, 185, 129, 0.12)', display: 'grid', placeItems: 'center', color: '#34d399' }}><CheckCircle2 size={18} /></div>
+                    <b>Autenticación</b>
+                  </div>
+                  <p style={{ margin: 0, color: '#cbd5e1', lineHeight: 1.6 }}>Las imágenes se procesan con confirmación explícita y cada acceso queda registrado en la auditoría del sistema.</p>
+                </div>
+
+                <div style={{ background: 'rgba(15, 23, 42, 0.72)', border: '1px solid rgba(148, 163, 184, 0.22)', borderRadius: 16, padding: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(244, 114, 182, 0.12)', display: 'grid', placeItems: 'center', color: '#f9a8d4' }}><ShieldCheck size={18} /></div>
+                    <b>Protección</b>
+                  </div>
+                  <p style={{ margin: 0, color: '#cbd5e1', lineHeight: 1.6 }}>Sesiones protegidas con validación facial, control de toma de decisiones y trazabilidad para cada operación.</p>
+                </div>
+              </div>
+            </div>
           </section>
         </div>
       </main>
+      {(pendingDocumentUpload || pendingDocumentDelete) && (
+        <div className="document-confirm-backdrop" role="presentation" onClick={() => { if (!documentActionBusy) { setPendingDocumentUpload(null); setPendingDocumentDelete(null) } }}>
+          <section className="document-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="document-confirm-title" onClick={(event) => event.stopPropagation()}>
+            <div className="panel-heading compact-heading">
+              <div>
+                <span className="section-kicker">DOCUMENTACIÓN</span>
+                <h2 id="document-confirm-title">{pendingDocumentUpload ? 'Confirmar subida' : 'Confirmar eliminación'}</h2>
+              </div>
+              <button className="icon-button" type="button" aria-label="Cerrar confirmación" disabled={documentActionBusy} onClick={() => { setPendingDocumentUpload(null); setPendingDocumentDelete(null) }}><X size={18} /></button>
+            </div>
+            <div className="document-confirm-icon">{pendingDocumentUpload ? <Upload size={22} /> : <Trash2 size={22} />}</div>
+            <p>{pendingDocumentUpload ? `¿Quieres guardar “${pendingDocumentUpload.name}” en la documentación local?` : `¿Quieres eliminar “${pendingDocumentDelete?.name}”? Esta acción no se puede deshacer.`}</p>
+            <div className="editor-actions">
+              <button className="button button--outline" type="button" disabled={documentActionBusy} onClick={() => { setPendingDocumentUpload(null); setPendingDocumentDelete(null) }}>Cancelar</button>
+              <button className={`button ${pendingDocumentUpload ? 'button--primary' : 'button--danger'}`} type="button" disabled={documentActionBusy} onClick={() => void (pendingDocumentUpload ? confirmDocumentationUpload() : confirmDocumentationDelete())}>
+                {documentActionBusy ? <span className="spinner" /> : pendingDocumentUpload ? <><Upload size={16} /> Confirmar subida</> : <><Trash2 size={16} /> Eliminar archivo</>}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
       {notificationsOpen && <aside className="notifications-drawer" aria-label="Alertas del sistema">
         <div className="notifications-heading"><div><span className="section-kicker">CENTRO DE ALERTAS</span><h2>Alertas presentadas</h2></div><button className="icon-button" type="button" aria-label="Cerrar alertas" onClick={() => setNotificationsOpen(false)}><X size={18} /></button></div>
         {alerts.length ? <div className="notifications-list">{alerts.map((event) => <div className="notification-item" key={event.id}><span className="notification-icon"><Bell size={15} /></span><div><b>{event.event_type} · {event.source}</b><span>{event.message || event.error_code || 'Intento fallido registrado'}</span><small>{formatDate(event.created_at)}</small></div></div>)}</div> : <div className="empty-state">No hay alertas registradas.</div>}
+      </aside>}
+      {helpOpen && <aside className="help-drawer" aria-label="Ayuda del dashboard">
+        <div className="notifications-heading"><div><span className="section-kicker">CENTRO DE AYUDA</span><h2>Guía rápida</h2></div><button className="icon-button" type="button" aria-label="Cerrar ayuda" onClick={() => setHelpOpen(false)}><X size={18} /></button></div>
+        <div className="help-list">
+          <div><span className="help-step">01</span><div><b>Reconoce un rostro</b><p>Sube una imagen o activa la cámara para iniciar el análisis.</p></div></div>
+          <div><span className="help-step">02</span><div><b>Revisa el resultado</b><p>Consulta la coincidencia, confianza y datos recuperados.</p></div></div>
+          <div><span className="help-step">03</span><div><b>Gestiona documentos</b><p>Abre Documentación para subir, consultar o eliminar archivos.</p></div></div>
+          <div><span className="help-step">Esc</span><div><b>Cierra ventanas</b><p>Pulsa Escape para cerrar paneles, modales y menús abiertos.</p></div></div>
+        </div>
       </aside>}
     </div>
   )

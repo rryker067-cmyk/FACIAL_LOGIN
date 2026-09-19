@@ -7,6 +7,23 @@
   position: relative;
 }
 
+@keyframes homeReveal {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes homeGlowPulse {
+  0%, 100% { opacity: .55; transform: translateX(-50%) scale(1); }
+  50% { opacity: .8; transform: translateX(-50%) scale(1.06); }
+}
+
+.home-nav { animation: homeReveal .55s ease both; }
+.home-hero > * { animation: homeReveal .7s cubic-bezier(.2, .8, .2, 1) both; }
+.home-hero > *:nth-child(2) { animation-delay: .08s; }
+.home-hero > *:nth-child(3) { animation-delay: .16s; }
+.home-hero > *:nth-child(4) { animation-delay: .24s; }
+.home-hero > *:nth-child(5) { animation-delay: .34s; }
+
 /* Fondo dinámico con luces que se mueven al hacer scroll */
 .dynamic-bg-glow {
   position: absolute;
@@ -19,6 +36,7 @@
   z-index: 0;
   pointer-events: none;
   transition: transform 0.1s ease-out;
+  animation: homeGlowPulse 8s ease-in-out infinite;
 }
 
 /* Navbar */
@@ -57,6 +75,19 @@
 .nav-links {
   display: flex;
   gap: 2rem;
+}
+
+.home-menu-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  color: #d1fae5;
+  border: 1px solid rgba(52, 211, 153, 0.28);
+  border-radius: 10px;
+  background: rgba(16, 185, 129, 0.08);
+  cursor: pointer;
 }
 
 .nav-links a {
@@ -318,6 +349,17 @@
   box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.7);
 }
 
+.bento-card,
+.tech-series-card,
+.stat-card,
+.features-container {
+  animation: homeReveal .7s ease both;
+}
+
+.bento-card:nth-child(2), .tech-series-card:nth-child(2) { animation-delay: .08s; }
+.bento-card:nth-child(3), .tech-series-card:nth-child(3) { animation-delay: .16s; }
+.bento-card:nth-child(4), .tech-series-card:nth-child(4) { animation-delay: .24s; }
+
 .bento-large {
   grid-column: span 12;
   flex-direction: row;
@@ -511,6 +553,32 @@
   .nav-links {
     display: none;
   }
+  .home-menu-btn {
+    display: inline-flex;
+  }
+  .home-login-nav-btn {
+    margin-left: auto;
+    margin-right: 8px;
+  }
+  .nav-links--open {
+    position: absolute;
+    top: calc(100% + 1px);
+    left: 0;
+    right: 0;
+    display: grid;
+    gap: 0;
+    padding: 8px 6%;
+    border-bottom: 1px solid rgba(31, 41, 55, 0.8);
+    background: rgba(3, 7, 18, 0.96);
+    box-shadow: 0 18px 30px rgba(0, 0, 0, 0.2);
+  }
+  .nav-links--open a {
+    padding: 14px 0;
+    border-bottom: 1px solid rgba(31, 41, 55, 0.55);
+  }
+  .nav-links--open a:last-child {
+    border-bottom: 0;
+  }
   .hero-actions {
     flex-direction: column;
   }
@@ -554,6 +622,15 @@
   transform: translateY(-4px);
   border-color: rgba(52, 211, 153, 0.4);
 }
+
+.hero-btn-primary,
+.home-login-nav-btn,
+.home-menu-btn,
+.hero-btn-secondary {
+  transition: transform .2s ease, color .2s ease, background-color .2s ease, border-color .2s ease;
+}
+
+.hero-btn-secondary:hover { transform: translateX(3px); }
 
 .tech-series-img {
   height: 220px;

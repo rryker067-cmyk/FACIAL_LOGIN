@@ -6,8 +6,9 @@ class UserRegisterRequest(BaseModel):
     apellido: str = Field(..., min_length=2)
     edad: int = Field(..., ge=18, le=120)
     telefono: str = Field(..., min_length=8)
-    email: str | None = Field(default=None, description="Correo electrónico opcional del usuario")
+    email: str = Field(..., min_length=3, description="Correo electrónico de Supabase Auth")
     dni: str | None = Field(default=None, description="Documento de identidad opcional del usuario")
+    password: str = Field(..., min_length=8, max_length=128, description="Contraseña de Supabase Auth")
     imagenes_base64: list[str] = Field(..., min_length=3, max_length=3)
 
     @field_validator("imagenes_base64")

@@ -27,7 +27,7 @@ class UserRepository:
             )
 
         response = supabase.table("usuarios").select(
-            "id,nombre,apellido,edad,telefono,email,dni,imagen_url,imagenes_urls"
+            "id,nombre,apellido,edad,telefono,email,dni,imagen_url,imagenes_urls,face_registration_metadata"
         ).eq("id", str(user_id)).limit(1).execute()
         return response.data[0] if response.data else None
 

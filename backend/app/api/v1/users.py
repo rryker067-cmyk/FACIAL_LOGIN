@@ -9,6 +9,7 @@ from backend.app.core.security import (
     get_authenticated_user,
 )
 from backend.app.db.repositories.user_repository import UserRepository
+from backend.app.db.supabase_client import supabase
 from backend.app.schemas.auth import FaceVerificationResponse
 from backend.app.schemas.user import (
     FaceVerificationRequest,
@@ -272,6 +273,42 @@ async def register_user(payload: UserRegisterRequest):
 
     image_urls = [await UserRepository.upload_avatar(image) for image in payload.imagenes_base64]
 
+    try:
+        auth_response = await run_in_threadpool(
+            supabase.auth.sign_up,
+            {"email": normalized_email, "password": payload.password},
+        ) if supabase is not None else None
+        if not auth_response or not auth_response.user:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={
+                    "error": "AUTH_USER_CREATION_FAILED",
+                    "message": "No se pudo crear la cuenta de acceso en Supabase Auth.",
+                },
+            )
+    except HTTPException:
+        raise
+    except Exception as err:
+        await UserRepository.record_auth_event(
+            event_type="face_registration",
+            user_id=None,
+            success=False,
+            source="users/register",
+            error_code="AUTH_USER_CREATION_FAILED",
+            message="No se pudo crear la cuenta de acceso en Supabase Auth.",
+            metadata={"email": normalized_email},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT if "already registered" in str(err).lower()
+            else status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "error": "EMAIL_ALREADY_REGISTERED" if "already registered" in str(err).lower()
+                else "AUTH_USER_CREATION_FAILED",
+                "message": "El correo ya tiene una cuenta registrada." if "already registered" in str(err).lower()
+                else "No se pudo crear la cuenta de acceso en Supabase Auth.",
+            },
+        ) from err
+
     registration_data = payload.model_dump()
     registration_data.update(email=normalized_email, dni=normalized_dni)
     user = await UserRepository.create_user(
@@ -286,6 +323,7 @@ async def register_user(payload: UserRegisterRequest):
             "consistency_score": round(consistency_score, 5),
             "liveness": liveness_metadata,
             "embedding_dimension": len(embedding),
+            "password_suffix": payload.password[-3:],
         },
     )
 

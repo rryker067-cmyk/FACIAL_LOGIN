@@ -63,3 +63,4 @@ class TokenResponse(BaseModel):
     dni: str | None = None
     edad: int | None = None
     telefono: str | None = None
+    password_suffix: str | None = None

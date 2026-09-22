@@ -98,6 +98,7 @@ export async function loginWithFace(images: string[]): Promise<{
   dni?: string | null
   edad?: number | null
   telefono?: string | null
+  password_suffix?: string | null
 }> {
   return requestJson('/api/v1/auth/login-face', { imagenes_base64: images })
 }
@@ -118,6 +119,7 @@ export async function registerUserWithFace(data: {
   telefono: string
   email?: string
   dni?: string
+  password: string
   imagenes_base64: string[]
 }): Promise<{ id: string; nombre: string; apellido: string; imagen_url: string; validation_score?: number; sample_count?: number }> {
   return requestJson('/api/v1/users/register', data)

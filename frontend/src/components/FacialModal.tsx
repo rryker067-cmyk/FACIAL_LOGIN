@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Camera, CameraOff, X, CheckCircle, AlertCircle, Loader2, UserPlus, LogIn, ShieldCheck, Zap } from 'lucide-react';
+import { Camera, CameraOff, X, CheckCircle, AlertCircle, Loader2, UserPlus, LogIn, ShieldCheck, Zap, Lock } from 'lucide-react';
 import { loginWithFace, registerUserWithFace } from '../services/recognitionApi';
 import './FacialModal.css';
 
@@ -22,6 +22,8 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
   const [registerPhone, setRegisterPhone] = useState('');
   const [registerDni, setRegisterDni] = useState('');
   const [registerAge, setRegisterAge] = useState('');
+  const [registerPassword, setRegisterPassword] = useState('');
+  const [passwordSuffix, setPasswordSuffix] = useState('');
 
   const [scanning, setScanning] = useState(false);
   const [status, setStatus] = useState<'idle' | 'scanning' | 'success' | 'error'>('idle');
@@ -195,6 +197,7 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
         setRegisterDni(result.dni || '');
         setRegisterAge(result.edad ? String(result.edad) : '');
         setRegisterPhone(result.telefono || '');
+        setPasswordSuffix(result.password_suffix || '');
         setMatchedUser({ name: matchedName, role: 'Operador Biométrico' });
 
         setStatus('success');
@@ -247,6 +250,12 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
       return;
     }
 
+    if (registerPassword.length < 8) {
+      setMessage('La contraseña debe tener al menos 8 caracteres.');
+      setStatus('error');
+      return;
+    }
+
     if (registrationImages.length !== 3) {
       setMessage(`Debe tomar exactamente 3 fotografías. Actualmente tiene ${registrationImages.length}.`);
       setStatus('error');
@@ -272,6 +281,7 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
         telefono: registerPhone.trim() || '+51 900 000 000',
         email: registerEmail.trim(),
         dni: registerDni.trim(),
+        password: registerPassword,
         imagenes_base64: registrationImages,
       });
 
@@ -483,6 +493,12 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
                 <span>La cámara está lista. El escaneo es manual.</span>
               </div>
             )}
+            {mode === 'login' && passwordSuffix && (
+              <div className="realtime-info-banner">
+                <Lock size={14} className="text-emerald-400" />
+                <span>Indicador de contraseña: ***{passwordSuffix}</span>
+              </div>
+            )}
 
             <div className="facial-form-fields-container">
               <div className="facial-row-inputs">
@@ -497,6 +513,20 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
                     disabled={mode === 'login'}
                   />
                 </div>
+                {mode === 'register' && (
+                  <div className="facial-input-group">
+                    <label className="facial-label">Contraseña *</label>
+                    <input
+                      type="password"
+                      value={registerPassword}
+                      onChange={(event) => setRegisterPassword(event.target.value)}
+                      placeholder="Mínimo 8 caracteres"
+                      className="facial-input-field"
+                      minLength={8}
+                      required
+                    />
+                  </div>
+                )}
                 <div className="facial-input-group">
                   <label className="facial-label">Correo electrónico *</label>
                   <input 

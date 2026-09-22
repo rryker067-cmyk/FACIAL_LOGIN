@@ -915,6 +915,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                   <span className="section-kicker">HISTORIAL</span>
                   <h2>Procesos registrados</h2>
                 </div>
+                <span className="history-total-badge">Total: {filteredAuditEvents.length}</span>
               </div>
 
               <div className="history-columns">

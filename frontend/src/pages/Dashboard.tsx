@@ -185,37 +185,42 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     verifyStreamRef.current?.getTracks().forEach((track) => track.stop())
   }, [])
 
+  const applyDashboardData = (users: Array<PersonRecord & { id: string; email?: string; imagen_url?: string }>, stats: DashboardStats, events: AuditEvent[]) => {
+    setRegisteredUsers(users.map((registeredUser) => ({
+      ...registeredUser,
+      edad: String(registeredUser.edad ?? ''),
+      telefono: registeredUser.telefono || '',
+      dni: registeredUser.dni || '',
+    })))
+    setDashboardStats(stats)
+    setAuditEvents(events)
+    setValidationHistory(stats.recent_events.map((event) => ({
+      name: event.recognized
+        ? (users.find((registeredUser) => registeredUser.id === event.user_id)?.nombre || 'Rostro reconocido')
+        : 'Rostro no reconocido',
+      time: event.created_at,
+      match: `${Math.round((event.similarity ?? 0) * 100)}%`,
+      status: event.recognized ? 'success' : 'failed',
+    })))
+  }
+
+  const refreshDashboardData = async () => {
+    const [users, stats, events] = await Promise.all([listUsers(), getDashboardStats(), listAuditEvents()])
+    applyDashboardData(users, stats, events)
+  }
+
   useEffect(() => {
-    const loadDashboardData = async () => {
-      try {
-        const [users, stats, events] = await Promise.all([listUsers(), getDashboardStats(), listAuditEvents()])
-        setRegisteredUsers(users.map((user) => ({
-          ...user,
-          edad: String(user.edad ?? ''),
-          telefono: user.telefono || '',
-          dni: user.dni || '',
-        })))
-        setDashboardStats(stats)
-        setAuditEvents(events)
-        setValidationHistory(stats.recent_events.map((event) => ({
-          name: event.recognized
-            ? (users.find((user) => user.id === event.user_id)?.nombre || 'Rostro reconocido')
-            : 'Rostro no reconocido',
-          time: event.created_at,
-          match: `${Math.round(event.similarity * 100)}%`,
-          status: event.recognized ? 'success' : 'failed',
-        })))
-      } catch {
-        setRecognitionNotice('No se pudieron cargar las métricas desde Supabase.')
-        setValidationHistory(readStorage<Validation[]>('veris_validation_history', []))
-      }
-    }
-    void loadDashboardData()
+    void refreshDashboardData().catch(() => {
+      setRecognitionNotice('No se pudieron cargar las métricas desde Supabase.')
+    })
   }, [])
 
   const closeVerifyCamera = () => {
     verifyStreamRef.current?.getTracks().forEach((track) => track.stop())
     verifyStreamRef.current = null
+    if (verifyVideoRef.current) {
+      verifyVideoRef.current.srcObject = null
+    }
     setVerifyCameraOpen(false)
   }
 
@@ -225,39 +230,57 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     setEditForm({ ...user })
     setVerificationToken(null)
     setVerifyError(null)
-    setVerifyCameraOpen(false)
+    closeVerifyCamera()
   }
 
   const startVerifyCamera = async () => {
     try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error('getUserMedia no está disponible en este navegador.')
+      }
+      closeVerifyCamera()
       const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: 'user' } })
       verifyStreamRef.current = stream
       setVerifyCameraOpen(true)
       window.setTimeout(() => {
-        if (verifyVideoRef.current) verifyVideoRef.current.srcObject = stream
+        if (verifyVideoRef.current) {
+          verifyVideoRef.current.srcObject = stream
+          void verifyVideoRef.current.play().catch(() => undefined)
+        }
       }, 0)
     } catch {
       setVerifyError('No se pudo acceder a la cámara para confirmar la identidad.')
+      closeVerifyCamera()
     }
   }
 
   const verifySelectedUser = async () => {
-    if (!selectedUser?.id || !verifyVideoRef.current) return
+    if (!selectedUser?.id || !verifyVideoRef.current) {
+      setVerifyError('La cámara no está lista para verificar la identidad.')
+      return
+    }
+
     const video = verifyVideoRef.current
-    if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+    if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || !video.videoWidth || !video.videoHeight) {
       setVerifyError('La cámara todavía no está lista.')
       return
     }
+
     const canvas = document.createElement('canvas')
     canvas.width = video.videoWidth || 640
     canvas.height = video.videoHeight || 480
     const context = canvas.getContext('2d')
-    if (!context) return
+    if (!context) {
+      setVerifyError('No se pudo preparar la captura para la verificación.')
+      return
+    }
+
     context.save()
     context.translate(canvas.width, 0)
     context.scale(-1, 1)
     context.drawImage(video, 0, 0, canvas.width, canvas.height)
     context.restore()
+
     setVerifyBusy(true)
     setVerifyError(null)
     try {
@@ -282,9 +305,9 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
         telefono: editForm.telefono,
         email: editForm.email || null,
       }, verificationToken)
-      setRegisteredUsers((current) => current.map((item) => item.id === selectedUser.id ? { ...item, ...updated } : item))
       setSelectedUser((current) => current ? { ...current, ...updated } : current)
       setEditForm((current) => current ? { ...current, ...updated } : current)
+      await refreshDashboardData()
       setRecognitionNotice('Datos actualizados correctamente.')
     } catch (error: any) {
       setVerifyError(error?.message || 'No se pudieron actualizar los datos.')
@@ -295,7 +318,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     if (!selectedUser?.id || !verificationToken || !window.confirm(`¿Eliminar a ${selectedUser.nombre} ${selectedUser.apellido}?`)) return
     try {
       await deleteUser(selectedUser.id, verificationToken)
-      setRegisteredUsers((current) => current.filter((item) => item.id !== selectedUser.id))
+      await refreshDashboardData()
       setSelectedUser(null)
       setEditForm(null)
       setRecognitionNotice('Perfil eliminado correctamente.')
@@ -324,13 +347,6 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     setFaceMatch(0)
     setRegistrationConfidence(0)
   }, [isCameraOpen])
-
-  const saveValidation = (entry: Validation) => {
-    const next = [entry, ...validationHistory].slice(0, 50)
-    setValidationHistory(next)
-    localStorage.setItem('veris_validation_history', JSON.stringify(next))
-    void getDashboardStats().then(setDashboardStats).catch(() => undefined)
-  }
 
   const selectSection = (section: string) => {
     setActiveSection(section)
@@ -369,24 +385,35 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
 
   const openCamera = async () => {
     try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error('getUserMedia no está disponible en este navegador.')
+      }
       setRecognitionError(null)
+      closeCamera()
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: 640, height: 480, facingMode: 'user' },
       })
       streamRef.current = stream
       setIsCameraOpen(true)
       window.setTimeout(() => {
-        if (videoRef.current) videoRef.current.srcObject = stream
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream
+          void videoRef.current.play().catch(() => undefined)
+        }
       }, 0)
     } catch {
       setIsCameraOpen(false)
       setRecognitionError('No se pudo acceder a la cámara. Verifica los permisos del navegador.')
+      closeCamera()
     }
   }
 
   const closeCamera = () => {
     streamRef.current?.getTracks().forEach((track) => track.stop())
     streamRef.current = null
+    if (videoRef.current) {
+      videoRef.current.srcObject = null
+    }
     setIsCameraOpen(false)
   }
 
@@ -436,12 +463,11 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
       if (isAcceptedMatch && result.imagen_url) setPreview(result.imagen_url)
       setFaceMatch(isAcceptedMatch ? match : 0)
       setRegistrationConfidence(isAcceptedMatch ? Math.round(match) : 0)
-      saveValidation({
-        name: isAcceptedMatch ? `${result.nombre} ${result.apellido}` : 'Rostro no reconocido',
-        time: new Date().toISOString(),
-        match: `${isAcceptedMatch ? Math.round(match) : 0}%`,
-        status: isAcceptedMatch ? 'success' : 'failed',
-      })
+      try {
+        await refreshDashboardData()
+      } catch {
+        setRecognitionNotice('Reconocimiento completado, pero no se pudo actualizar el resumen desde Supabase.')
+      }
     } catch {
       setRecognitionError('No se pudo conectar con el servicio de reconocimiento. Revisa FastAPI e inténtalo de nuevo.')
     } finally {

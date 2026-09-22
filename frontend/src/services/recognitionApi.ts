@@ -83,7 +83,7 @@ export type DashboardStats = {
   unrecognized_count: number
   recognition_rate: number
   activity_by_day: Record<string, number>
-  recent_events: Array<{ id: string; user_id?: string | null; similarity: number; recognized: boolean; source: string; created_at: string }>
+  recent_events: Array<{ id: string; user_id?: string | null; similarity?: number | null; recognized: boolean; source: string; created_at: string }>
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {

@@ -386,11 +386,35 @@ Si Storage no está configurado, el endpoint devuelve
 `listAuditEvents`. Las tarjetas y gráficos se vinculan a:
 
 - perfiles registrados desde `usuarios`;
-- validaciones y reconocimientos desde `recognition_events`;
+- validaciones del dashboard desde `recognition_events` con `source = 'dashboard'`;
 - porcentaje de reconocimiento;
 - actividad por día;
 - eventos recientes;
 - fotografía remota de Storage.
+
+### Puntos de cámara dentro del dashboard
+
+El dashboard tiene dos puntos de captura independientes:
+
+1. **Reconocer rostro:** `openCamera` solicita `getUserMedia`, asigna el
+   `MediaStream` al video de reconocimiento y `capturePhoto` envía un único
+   frame a `POST /api/v1/face-recognition/recognize`. FastAPI valida calidad,
+   detecta el rostro, consulta `match_face_1n` y registra un evento con
+   `source = 'dashboard'`.
+2. **Editar o eliminar una persona:** `startVerifyCamera` abre una cámara
+   exclusiva para la verificación del perfil seleccionado. `verifySelectedUser`
+   captura el frame y llama a `POST /api/v1/users/{id}/verify-face`. Solo si
+   Supabase confirma la coincidencia se entrega el token temporal requerido
+   para modificar o borrar el perfil. Estas verificaciones se conservan en la
+   auditoría, pero no se mezclan con las métricas de reconocimientos del
+   dashboard.
+
+Al cerrar cualquiera de las cámaras se detienen todas sus pistas y se limpia
+`video.srcObject`; esto evita streams duplicados y permite reabrir la cámara
+sin perder sincronización. Después de un reconocimiento, edición o borrado,
+el frontend vuelve a consultar usuarios, estadísticas y auditoría desde
+FastAPI/Supabase para que tarjetas, historial y gráficos representen el mismo
+estado persistido. No se usa el historial local como fuente de métricas.
 
 Los documentos cargados por el operador siguen siendo locales de IndexedDB.
 No deben confundirse con los perfiles biométricos ni con la auditoría de

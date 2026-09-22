@@ -67,7 +67,7 @@ class UserRepository:
                 "user_id": user_id,
                 "similarity": round(max(0, min(1, similarity)), 5),
                 "recognized": recognized,
-                "event_type": "face_login",
+                "event_type": "face_recognition",
                 "success": recognized,
                 "source": source,
                 "message": None if recognized else "Rostro no reconocido.",
@@ -193,7 +193,7 @@ class UserRepository:
             try:
                 response = supabase.table("recognition_events").select(
                     "id,user_id,similarity,recognized,source,created_at"
-                ).order("created_at", desc=True).limit(1000).execute()
+                ).eq("source", "dashboard").order("created_at", desc=True).limit(1000).execute()
                 events = response.data or []
             except Exception as err:
                 if _is_missing_recognition_events(err):

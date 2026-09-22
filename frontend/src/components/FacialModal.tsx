@@ -290,8 +290,13 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
     } catch (error: any) {
       if (error?.code === 'USER_ALREADY_REGISTERED' || error?.status === 409) {
         setDuplicateNotice(true);
-        setStatus('error');
-        setMessage('Este usuario ya está registrado. Inicie sesión.');
+        setMode('login');
+        setCapturedImage(null);
+        setRegistrationImages([]);
+        setFaceMatch(0);
+        setRegistrationConfidence(0);
+        setStatus('idle');
+        setMessage('Rostro ya registrado. Inicie sesión para continuar.');
         return;
       }
       if (error?.code === 'AVATAR_STORAGE_UNAVAILABLE') {

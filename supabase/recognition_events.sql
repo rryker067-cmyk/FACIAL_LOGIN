@@ -1,6 +1,11 @@
 -- Ejecutar en Supabase > SQL Editor.
 -- Esta migracion es idempotente y crea la auditoria que usa FastAPI.
 
+create extension if not exists vector;
+
+alter table public.usuarios
+    add column if not exists face_embedding vector(512);
+
 create table if not exists public.recognition_events (
     id uuid primary key default gen_random_uuid(),
     user_id uuid references public.usuarios(id) on delete set null,
@@ -65,5 +70,44 @@ create unique index if not exists usuarios_email_normalized_unique_idx
 create unique index if not exists usuarios_dni_unique_idx
     on public.usuarios (trim(dni))
     where dni is not null and trim(dni) <> '';
+
+create or replace function public.match_face_1n(
+    query_embedding vector(512),
+    match_threshold double precision default 0.75
+)
+returns table (
+    id uuid,
+    nombre text,
+    apellido text,
+    email text,
+    dni text,
+    edad integer,
+    telefono text,
+    imagen_url text,
+    similarity double precision
+)
+language sql
+security definer
+set search_path = public
+as $$
+    select
+        u.id,
+        u.nombre,
+        u.apellido,
+        u.email,
+        u.dni,
+        u.edad,
+        u.telefono,
+        u.imagen_url,
+        (1 - (u.face_embedding <=> query_embedding))::double precision as similarity
+    from public.usuarios u
+    where u.face_embedding is not null
+      and (1 - (u.face_embedding <=> query_embedding)) >= match_threshold
+    order by u.face_embedding <=> query_embedding
+    limit 1;
+$$;
+
+revoke all on function public.match_face_1n(vector(512), double precision) from public;
+grant execute on function public.match_face_1n(vector(512), double precision) to anon, authenticated;
 
 notify pgrst, 'reload schema';

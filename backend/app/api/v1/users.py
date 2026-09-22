@@ -159,12 +159,35 @@ async def register_user(payload: UserRegisterRequest):
         )
 
     embeddings: list[list[float]] = []
-    await run_in_threadpool(LightweightLiveness.verify_sequence, payload.imagenes_base64)
-    for image in payload.imagenes_base64:
-        cv2_img = await run_in_threadpool(
-            LightweightLiveness.verify_quality_and_liveness, image
+    try:
+        await run_in_threadpool(LightweightLiveness.verify_sequence, payload.imagenes_base64)
+        for image in payload.imagenes_base64:
+            cv2_img = await run_in_threadpool(
+                LightweightLiveness.verify_quality_and_liveness, image
+            )
+            embeddings.append(await run_in_threadpool(face_embedder.extract_embedding, cv2_img))
+    except HTTPException as err:
+        detail = err.detail if isinstance(err.detail, dict) else {}
+        await UserRepository.record_auth_event(
+            event_type="face_registration",
+            user_id=None,
+            success=False,
+            source="users/register",
+            error_code=str(detail.get("error", "FACE_PROCESSING_ERROR")),
+            message=str(detail.get("message", "No se pudo validar el registro facial.")),
+            metadata={"image_index": detail["image_index"]} if "image_index" in detail else None,
         )
-        embeddings.append(await run_in_threadpool(face_embedder.extract_embedding, cv2_img))
+        raise
+    except Exception as err:
+        await UserRepository.record_auth_event(
+            event_type="face_registration",
+            user_id=None,
+            success=False,
+            source="users/register",
+            error_code="FACE_PROCESSING_ERROR",
+            message=str(err),
+        )
+        raise HTTPException(status_code=422, detail={"error": "FACE_PROCESSING_ERROR"}) from err
 
     pair_scores = [
         sum(left * right for left, right in zip(first, second))
@@ -173,6 +196,15 @@ async def register_user(payload: UserRegisterRequest):
     ]
     consistency_score = min(pair_scores)
     if consistency_score < 0.45:
+        await UserRepository.record_auth_event(
+            event_type="face_registration",
+            user_id=None,
+            success=False,
+            source="users/register",
+            error_code="FACE_SAMPLES_INCONSISTENT",
+            message="Las capturas no son suficientemente consistentes.",
+            metadata={"consistency_score": round(consistency_score, 4)},
+        )
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail={
@@ -182,12 +214,19 @@ async def register_user(payload: UserRegisterRequest):
             },
         )
 
-    average_embedding = [sum(values) / len(values) for values in zip(*embeddings)]
-    norm = sum(value * value for value in average_embedding) ** 0.5
-    embedding = [value / norm for value in average_embedding]
+    embedding = face_embedder.average_embeddings(embeddings)
 
     existing_match = await UserRepository.find_best_face_match(query_embedding=embedding, threshold=0.75)
     if existing_match:
+        await UserRepository.record_auth_event(
+            event_type="face_registration",
+            user_id=str(existing_match["id"]),
+            success=False,
+            source="users/register",
+            similarity=float(existing_match.get("similarity", 0)),
+            error_code="USER_ALREADY_REGISTERED",
+            message="El rostro ya está registrado.",
+        )
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
@@ -205,6 +244,14 @@ async def register_user(payload: UserRegisterRequest):
         dni=normalized_dni,
     )
     if existing_identity:
+        await UserRepository.record_auth_event(
+            event_type="face_registration",
+            user_id=str(existing_identity.get("id")) if existing_identity.get("id") else None,
+            success=False,
+            source="users/register",
+            error_code="USER_ALREADY_REGISTERED",
+            message="El correo o DNI ya está registrado.",
+        )
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
@@ -226,6 +273,17 @@ async def register_user(payload: UserRegisterRequest):
     )
 
     response = _user_response(user)
+    await UserRepository.record_auth_event(
+        event_type="face_registration",
+        user_id=str(user["id"]),
+        success=True,
+        source="users/register",
+        message="Registro facial creado correctamente.",
+        metadata={
+            "sample_count": len(embeddings),
+            "validation_score": round(consistency_score * 100, 2),
+        },
+    )
     return response.model_copy(update={
         "validation_score": round(consistency_score * 100, 2),
         "sample_count": len(embeddings),

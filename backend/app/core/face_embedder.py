@@ -24,6 +24,9 @@ class FaceEmbedder:
         self.face_detector = cv2.CascadeClassifier(
             str(Path(cv2.data.haarcascades) / "haarcascade_frontalface_default.xml")
         )
+        self.face_detector_alt = cv2.CascadeClassifier(
+            str(Path(cv2.data.haarcascades) / "haarcascade_frontalface_alt2.xml")
+        )
 
         self._ensure_model()
         if os.path.exists(model_path):
@@ -43,22 +46,38 @@ class FaceEmbedder:
     def _crop_face(self, image: np.ndarray) -> np.ndarray:
         """Crop the largest detected face while retaining a small alignment margin."""
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        gray = cv2.equalizeHist(gray)
         faces = self.face_detector.detectMultiScale(
             gray,
-            scaleFactor=1.1,
-            minNeighbors=5,
-            minSize=(60, 60),
+            scaleFactor=1.05,
+            minNeighbors=4,
+            minSize=(40, 40),
         )
+        if len(faces) == 0 and not self.face_detector_alt.empty():
+            faces = self.face_detector_alt.detectMultiScale(
+                gray,
+                scaleFactor=1.05,
+                minNeighbors=4,
+                minSize=(40, 40),
+            )
         if len(faces) == 0:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail={"error": "FACE_NOT_DETECTED", "message": "No se detectó ningún rostro en la imagen."},
             )
+        # Keep the largest face when the cascade reports overlapping regions;
+        # reject only clearly separate faces.
         if len(faces) > 1:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail={"error": "MULTIPLE_FACES_DETECTED", "message": "La imagen debe contener un solo rostro."},
-            )
+            areas = sorted((int(width) * int(height), x, y, width, height) for x, y, width, height in faces)
+            largest_area = areas[-1][0]
+            distinct_faces = [item for item in areas if item[0] >= largest_area * 0.35]
+            if len(distinct_faces) <= 1:
+                faces = np.array([[areas[-1][1], areas[-1][2], areas[-1][3], areas[-1][4]]])
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={"error": "MULTIPLE_FACES_DETECTED", "message": "La imagen debe contener un solo rostro."},
+                )
 
         x, y, width, height = max(faces, key=lambda box: box[2] * box[3])
         margin_x = int(width * 0.25)
@@ -136,6 +155,30 @@ class FaceEmbedder:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Fallo en la extracción del vector biométrico: {str(err)}"
             )
+
+    @staticmethod
+    def average_embeddings(embeddings: list[list[float]]) -> list[float]:
+        if not embeddings or any(len(embedding) != FaceEmbedder.EMBEDDING_DIMENSION for embedding in embeddings):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"error": "INVALID_FACE_EMBEDDING", "message": "Los embeddings faciales tienen una dimensión inválida."},
+            )
+
+        values = np.asarray(embeddings, dtype=np.float32)
+        if not np.isfinite(values).all():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"error": "INVALID_FACE_EMBEDDING", "message": "El embedding facial contiene valores inválidos."},
+            )
+
+        average = values.mean(axis=0)
+        norm = float(np.linalg.norm(average))
+        if not np.isfinite(norm) or norm <= 1e-8:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"error": "INVALID_FACE_EMBEDDING", "message": "No se pudo normalizar el embedding facial."},
+            )
+        return (average / norm).astype(np.float32).tolist()
 
 
 face_embedder = FaceEmbedder()

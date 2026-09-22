@@ -102,19 +102,25 @@ async def authenticated_user(request: Request):
 @router.post("/login-face", response_model=TokenResponse)
 async def login_face_1n(payload: LoginFaceRequest):
     try:
-        cv2_img, liveness_metadata = await run_in_threadpool(
+        cv2_images, liveness_metadata = await run_in_threadpool(
             LightweightLiveness.verify_sequence, payload.imagenes_base64
         )
-        incoming_embedding = await run_in_threadpool(face_embedder.extract_embedding, cv2_img)
+        embeddings = [
+            await run_in_threadpool(face_embedder.extract_embedding, image)
+            for image in cv2_images
+        ]
+        incoming_embedding = face_embedder.average_embeddings(embeddings)
         match = await UserRepository.find_best_face_match(
             query_embedding=incoming_embedding, threshold=0.75
         )
     except HTTPException as err:
+        error_detail = err.detail if isinstance(err.detail, dict) else {}
         await UserRepository.record_auth_event(
             event_type="face_login", user_id=None, success=False,
-            source="auth/login-face", error_code=str(
-                err.detail.get("error") if isinstance(err.detail, dict) else "FACE_PROCESSING_ERROR"
-            ), message="No se pudo procesar o validar el rostro.",
+            source="auth/login-face",
+            error_code=str(error_detail.get("error", "FACE_PROCESSING_ERROR")),
+            message=str(error_detail.get("message", "No se pudo procesar o validar el rostro.")),
+            metadata={"image_index": error_detail["image_index"]} if "image_index" in error_detail else None,
         )
         raise
     except Exception as err:
@@ -144,7 +150,7 @@ async def login_face_1n(payload: LoginFaceRequest):
         event_type="face_login", user_id=str(match["id"]),
         similarity=float(match["similarity"]), success=True,
         source="auth/login-face", message="Inicio de sesión correcto.",
-        metadata={"liveness": liveness_metadata},
+        metadata={"liveness": {**liveness_metadata, "embedding_count": len(embeddings)}},
     )
     
     # 4. Generación de Session Token

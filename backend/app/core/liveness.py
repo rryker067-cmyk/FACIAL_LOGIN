@@ -92,7 +92,7 @@ class LightweightLiveness:
             )
 
     @staticmethod
-    def verify_sequence(images: list[str]) -> tuple[np.ndarray, dict[str, float]]:
+    def verify_sequence(images: list[str]) -> tuple[list[np.ndarray], dict[str, float]]:
         """Validate a short camera sequence, including motion and texture checks.
 
         This is a defense-in-depth heuristic. A trained anti-spoofing model is
@@ -104,7 +104,32 @@ class LightweightLiveness:
                 detail={"error": "LIVENESS_SEQUENCE_REQUIRED", "message": "Se requieren tres capturas consecutivas."},
             )
 
-        frames = [LightweightLiveness.verify_quality_and_liveness(image) for image in images]
+        frames = []
+        for index, image in enumerate(images):
+            try:
+                frames.append(LightweightLiveness.verify_quality_and_liveness(image))
+            except HTTPException as err:
+                detail = err.detail if isinstance(err.detail, dict) else {
+                    "error": "IMAGE_VALIDATION_FAILED",
+                    "message": str(err.detail),
+                }
+                raise HTTPException(
+                    status_code=err.status_code,
+                    detail={
+                        **detail,
+                        "image_index": index,
+                        "message": f"La captura {index + 1} no es válida: {detail.get('message', 'verifique la imagen.')}",
+                    },
+                ) from err
+            except Exception as err:
+                raise HTTPException(
+                    status_code=422,
+                    detail={
+                        "error": "IMAGE_VALIDATION_FAILED",
+                        "image_index": index,
+                        "message": f"No se pudo validar la captura {index + 1}.",
+                    },
+                ) from err
         gray_frames = [cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) for frame in frames]
         motion_scores = []
         for previous, current in zip(gray_frames, gray_frames[1:]):
@@ -132,7 +157,7 @@ class LightweightLiveness:
                 },
             )
 
-        return frames[1], {
+        return frames, {
             "motion_score": round(max(motion_scores), 5),
             "texture_score": round(min(texture_scores), 5),
             "frame_count": float(len(frames)),

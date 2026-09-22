@@ -114,7 +114,32 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
     ctx.scale(-1, 1);
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     ctx.restore();
-    return canvas.toDataURL('image/jpeg', 0.92);
+    const snapshot = canvas.toDataURL('image/jpeg', 0.92);
+    if (!snapshot.startsWith('data:image/jpeg;base64,') || snapshot.length < 1000) {
+      throw new Error('La cámara devolvió una captura vacía o incompleta.');
+    }
+    return snapshot;
+  };
+
+  const waitForVideoFrame = async (): Promise<void> => {
+    const video = videoRef.current;
+    if (!video) throw new Error('La cámara no está disponible.');
+    const deadline = Date.now() + 5000;
+    while (
+      (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA
+        || video.videoWidth < 160
+        || video.videoHeight < 160)
+      && Date.now() < deadline
+    ) {
+      await new Promise((resolve) => window.setTimeout(resolve, 100));
+    }
+    if (
+      video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA
+      || video.videoWidth < 160
+      || video.videoHeight < 160
+    ) {
+      throw new Error('La cámara no entregó un frame válido. Espere a que se active e inténtelo de nuevo.');
+    }
   };
 
   const captureLivenessSequence = async (): Promise<string[]> => {
@@ -128,6 +153,7 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
             : 'Regrese al centro y mantenga la mirada en la cámara.',
       );
       await new Promise((resolve) => window.setTimeout(resolve, 700));
+      await waitForVideoFrame();
       captures.push(captureSnapshot());
     }
     return captures;
@@ -147,6 +173,7 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
     window.setTimeout(async () => {
       try {
         setScanning(false);
+        await waitForVideoFrame();
         const sequence = await captureLivenessSequence();
         const snapshotUrl = sequence[1];
         setCapturedImage(snapshotUrl);

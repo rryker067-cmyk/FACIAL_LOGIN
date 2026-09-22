@@ -1,7 +1,17 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 class LoginFaceRequest(BaseModel):
     imagenes_base64: list[str] = Field(..., min_length=3, max_length=3, description="Tres capturas consecutivas de la cámara")
+
+    @field_validator("imagenes_base64")
+    @classmethod
+    def validate_images(cls, images: list[str]) -> list[str]:
+        for index, image in enumerate(images):
+            if not image.startswith("data:image/"):
+                raise ValueError(f"La captura {index + 1} debe ser una imagen de cámara.")
+            if len(image) > 7_000_000:
+                raise ValueError(f"La captura {index + 1} supera el tamaño máximo permitido.")
+        return images
 
 
 class AuditEventResponse(BaseModel):

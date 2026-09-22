@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Camera, CameraOff, X, CheckCircle, AlertCircle, Loader2, UserPlus, LogIn, ShieldCheck, Zap } from 'lucide-react';
+import { Camera, CameraOff, X, CheckCircle, AlertCircle, Loader2, UserPlus, LogIn, ShieldCheck, Zap, ScanFace } from 'lucide-react';
 import { loginWithFace, registerUserWithFace } from '../services/recognitionApi';
 import './FacialModal.css';
 
@@ -27,7 +27,7 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
   const [status, setStatus] = useState<'idle' | 'scanning' | 'success' | 'error'>('idle');
   const [message, setMessage] = useState('');
 
-  // Imagen fija capturada
+  // Los frames se generan internamente para enviarlos al backend; no se ofrece carga manual.
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [registrationImages, setRegistrationImages] = useState<string[]>([]);
   const [matchedUser, setMatchedUser] = useState<any>(null);
@@ -220,25 +220,30 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
     }, 2500);
   };
 
-  // Acción para capturar foto en Modo Registrarse (botón debajo del cuadro)
-  const handleCaptureRegistration = () => {
+  // El registro obtiene automáticamente la secuencia de liveness desde el video en vivo.
+  const handleRegistrationScan = async () => {
     if (!cameraActive) {
-      setMessage('Encienda la cámara para tomar la captura.');
+      setMessage('Encienda la cámara para iniciar el escaneo.');
       setStatus('error');
       return;
     }
 
     try {
-      const snapshotUrl = captureSnapshot();
-      setCapturedImage(snapshotUrl);
-      setRegistrationImages((current) => [...current, snapshotUrl].slice(0, 3));
+      setScanning(true);
+      setStatus('scanning');
+      setMessage('Analizando el video en vivo. Mantenga el rostro visible y siga las indicaciones.');
+      const sequence = await captureLivenessSequence();
+      setRegistrationImages(sequence);
+      setCapturedImage(null);
       setFaceMatch(0);
       setRegistrationConfidence(0);
       setStatus('success');
-      setMessage(`Fotografía ${Math.min(registrationImages.length + 1, 3)} de 3 capturada. Cambie ligeramente la expresión o el ángulo para la siguiente.`);
+      setMessage('Escaneo completado. Ya puede guardar el registro.');
     } catch (error: any) {
       setStatus('error');
-      setMessage(error?.message || 'No se pudo capturar la fotografía de la cámara.');
+      setMessage(error?.message || 'No se pudo completar el escaneo de la cámara.');
+    } finally {
+      setScanning(false);
     }
   };
 
@@ -406,24 +411,6 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
                 )}
               </div>
 
-              {capturedImage && mode === 'register' && (
-                <div className="facial-capture-preview">
-                  <span className="facial-preview-label">Vista previa</span>
-                  <img src={capturedImage} alt="Vista previa de la captura" />
-                  <span className="facial-preview-status">{registrationImages.length} de 3 fotos seleccionadas</span>
-                  {mode === 'register' && <div className="facial-registration-thumbnails" aria-label="Capturas del registro">
-                    {registrationImages.map((image, index) => <img key={`${image}-${index}`} src={image} alt={`Captura ${index + 1} del registro`} />)}
-                  </div>}
-                  <div className="facial-preview-actions">
-                    <button type="button" onClick={() => { setStatus('success'); setMessage('Foto confirmada. Puede guardar el registro.'); }} className="facial-use-btn">
-                      <CheckCircle size={14} /> Usar esta foto
-                    </button>
-                    <button type="button" onClick={() => { setCapturedImage(null); setRegistrationImages([]); }} className="facial-retake-btn">
-                      <Camera size={14} /> Reiniciar capturas
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
 
             <div className="facial-metrics" aria-label="Métricas de análisis facial">
@@ -449,20 +436,19 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
               </div>
             </div>
 
-            {/* La captura no detiene la cámara: se confirma desde la vista previa */}
             {mode === 'register' && (
               <button 
                 type="button" 
-                onClick={handleCaptureRegistration}
+                onClick={() => void handleRegistrationScan()}
                 className="facial-capture-btn-under"
-                disabled={registrationImages.length >= 3}
+                disabled={scanning}
               >
-                <Camera size={16} /> {registrationImages.length >= 3 ? '3 fotos listas' : `Tomar fotografía ${registrationImages.length + 1} de 3`}
+                <ScanFace size={16} /> {scanning ? 'Escaneando video...' : registrationImages.length === 3 ? 'Escaneo listo' : 'Escanear rostro en vivo'}
               </button>
             )}
             
             <p className="facial-cam-legend">
-              {mode === 'login' ? 'Pulsa “Escanear ahora” para verificar el rostro.' : 'Capture tres fotos: rostro neutral y dos expresiones o ángulos diferentes.'}
+              {mode === 'login' ? 'Pulsa “Escanear ahora” para verificar el rostro.' : 'El sistema analiza automáticamente tres frames del video para validar presencia y movimiento.'}
             </p>
           </div>
 

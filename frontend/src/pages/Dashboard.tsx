@@ -726,8 +726,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                     <video ref={videoRef} autoPlay playsInline muted className="dashboard-camera-video" />
                     <div className="video-focus" />
                     <div className="camera-inline-controls">
-                      <button className="button button--primary" onClick={capturePhoto}><Camera size={17} /> Capturar</button>
-                      <button className="button button--outline" onClick={closeCamera}><X size={15} /> Cerrar</button>
+                      <button className="button button--outline" onClick={closeCamera}><X size={15} /> Cerrar cámara</button>
                     </div>
                   </>
                 ) : preview ? (
@@ -748,13 +747,13 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                   <small>{registrationConfidence >= 90 ? 'Detalle suficiente para reconocer el rostro' : 'Analizando calidad e iluminación'}</small>
                 </div>
               </div>
-              <div className="capture-actions"><button className="button button--primary" onClick={openCamera}><Camera size={16} /> Activar cámara</button><span className="capture-note">El reconocimiento solo acepta capturas realizadas desde la cámara.</span></div>
+              <div className="capture-actions"><button className="button button--primary" onClick={openCamera}><Camera size={16} /> Activar cámara</button><span className="capture-note">El escaneo analiza el video en vivo; no necesitas subir ni tomar una foto.</span></div>
               <div className="recognition-method-note"><strong>Análisis activo:</strong> embedding facial 512D con preprocesamiento RGB 112 × 112. <strong>Comparación:</strong> similitud coseno mediante <code>match_face_1n</code> en Supabase, con umbral de aceptación del 75%.</div>
               <div className="capture-note"><ShieldCheck size={15} /><span>La imagen se procesa de forma segura y solo se conserva con tu confirmación.</span></div>
             </div>
 
             <div className="panel details-panel"><div className="panel-heading"><div><span className="section-kicker">PASO 02</span><h2>Datos personales</h2></div><span className="match-badge"><span /> Coincidencia lista</span></div>
-              <button className="recognize-button" onClick={() => void recognizeFaceFromImage()} disabled={!preview || isRecognizing}>{isRecognizing ? <><span className="spinner" /> Analizando rostro...</> : <><ScanFace size={18} /> Reconocer y completar datos</>}</button>
+              <button className="recognize-button" onClick={() => { if (!isCameraOpen) { void openCamera(); return } capturePhoto() }} disabled={isRecognizing}>{isRecognizing ? <><span className="spinner" /> Analizando video...</> : <><ScanFace size={18} /> Escanear rostro en vivo</>}</button>
               {recognitionError && <p className="recognition-error" role="alert">{recognitionError}</p>}
               <form onSubmit={saveRecord}><div className="form-grid"><Field label="Nombre" value={form.nombre} onChange={(value) => updateField('nombre', value)} placeholder="Ej. Valentina" /><Field label="Estado" value={form.estado || 'Pendiente'} onChange={() => undefined} placeholder="Pendiente" /><Field label="Edad" value={form.edad} onChange={(value) => updateField('edad', value)} placeholder="Años" type="number" /><Field label="DNI" value={form.dni} onChange={(value) => updateField('dni', value)} placeholder="8 dígitos" /><Field wide label="Correo electrónico" value={form.email || ''} onChange={(value) => updateField('email', value)} placeholder="correo@empresa.com" /><Field wide label="Número de teléfono" value={form.telefono} onChange={(value) => updateField('telefono', value)} placeholder="+51 000 000 000" /></div><div className="form-footer"><span className="required-note">* Campos requeridos</span><button type="submit" className="button button--primary" disabled={!form.nombre || !form.dni}>{isSaved ? <><Check size={16} /> Guardado</> : <><Database size={16} /> Guardar registro</>}</button></div></form>
             </div>

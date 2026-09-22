@@ -147,6 +147,7 @@ def _user_response(user: dict) -> UserResponse:
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register_user(payload: UserRegisterRequest):
+    # El alta biométrica solo acepta una secuencia real de tres capturas.
     if len(payload.imagenes_base64) != 3 or any(
         not image.startswith("data:image/") for image in payload.imagenes_base64
     ):
@@ -158,6 +159,7 @@ async def register_user(payload: UserRegisterRequest):
             },
         )
 
+    # Se validan todas las imágenes antes de generar o persistir cualquier dato.
     embeddings: list[list[float]] = []
     liveness_metadata: dict[str, float] = {}
     try:
@@ -195,6 +197,7 @@ async def register_user(payload: UserRegisterRequest):
         )
         raise HTTPException(status_code=422, detail={"error": "FACE_PROCESSING_ERROR"}) from err
 
+    # La consistencia mínima evita mezclar capturas de personas diferentes.
     pair_scores = [
         sum(left * right for left, right in zip(first, second))
         for index, first in enumerate(embeddings)
@@ -224,8 +227,10 @@ async def register_user(payload: UserRegisterRequest):
             },
         )
 
+    # Registro y login usan exactamente el mismo vector promedio normalizado.
     embedding = face_embedder.average_embeddings(embeddings)
 
+    # La comprobación facial ocurre antes de Storage e INSERT para evitar duplicados.
     existing_match = await UserRepository.find_best_face_match(query_embedding=embedding, threshold=0.75)
     if existing_match:
         await UserRepository.record_auth_event(
@@ -270,6 +275,7 @@ async def register_user(payload: UserRegisterRequest):
             },
         )
 
+    # Solo después de pasar todas las validaciones se suben las imágenes reales.
     image_urls = [await UserRepository.upload_avatar(image) for image in payload.imagenes_base64]
 
     registration_data = payload.model_dump()

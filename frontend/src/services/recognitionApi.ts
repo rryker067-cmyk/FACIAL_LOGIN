@@ -2,6 +2,7 @@ import { appConfig } from '../config/env'
 import { emptyPerson, PersonRecord } from '../types/person'
 
 async function requestJson<T>(endpoint: string, body?: Record<string, unknown>, method = 'POST', extraHeaders: Record<string, string> = {}): Promise<T> {
+  // Todas las operaciones sensibles pasan por FastAPI; no se consulta Supabase desde React.
   if (appConfig.usesDemoRecognition) {
     const error = new Error('La API de reconocimiento no está configurada. Define VITE_API_URL.') as Error & { code?: string }
     error.code = 'API_NOT_CONFIGURED'

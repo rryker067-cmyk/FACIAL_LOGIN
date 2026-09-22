@@ -101,6 +101,7 @@ async def authenticated_user(request: Request):
 
 @router.post("/login-face", response_model=TokenResponse)
 async def login_face_1n(payload: LoginFaceRequest):
+    # Login facial: la secuencia y el promedio deben coincidir con el registro.
     try:
         cv2_images, liveness_metadata = await run_in_threadpool(
             LightweightLiveness.verify_sequence, payload.imagenes_base64
@@ -131,6 +132,7 @@ async def login_face_1n(payload: LoginFaceRequest):
         )
         raise HTTPException(status_code=422, detail={"error": "FACE_PROCESSING_ERROR"})
 
+    # La RPC ya filtra por umbral; una respuesta vacía es un rechazo explícito.
     if not match:
         await UserRepository.record_auth_event(
             event_type="face_login", user_id=None, similarity=0, success=False,
@@ -153,7 +155,7 @@ async def login_face_1n(payload: LoginFaceRequest):
         metadata={"liveness": {**liveness_metadata, "embedding_count": len(embeddings)}},
     )
     
-    # 4. Generación de Session Token
+    # El token de aplicación se emite únicamente después de registrar el éxito.
     token = create_access_token({
         "sub": str(match["id"]), 
         "name": f"{match['nombre']} {match['apellido']}"

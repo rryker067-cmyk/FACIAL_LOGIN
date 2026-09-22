@@ -1,59 +1,67 @@
-# Documentación completa — Sistema de autenticación facial
+# Documentación técnica completa
 
-## 1. Arquitectura propuesta
+## 1. Resumen
 
-El sistema utiliza una arquitectura de tres capas:
+FACIAL_LOGIN es una aplicación web de autenticación y reconocimiento facial.
+El frontend captura imágenes desde la cámara y el backend toma las decisiones
+de validación, reconocimiento, autorización y persistencia.
+
+La aplicación no usa Django. La API está implementada con FastAPI y se apoya
+en Supabase para PostgreSQL, pgvector, Storage y autenticación tradicional.
 
 ```text
 React + TypeScript + Vite
-             │
-             │ HTTP/JSON y data URLs de cámara
-             ▼
+        │ HTTPS/JSON + data URLs
+        ▼
 FastAPI + Python
-  ├── Validación de calidad de imagen
-  ├── Extracción de embedding facial con ONNX/ArcFace
-  ├── Autenticación con Supabase Auth
-  └── Consultas vectoriales con pgvector
-             │
-             ▼
-Supabase
-  ├── Auth
-  ├── PostgreSQL: tabla usuarios
-  ├── RPC match_face_1n
-  └── Storage: bucket avatars
+  ├─ validación de payload e imágenes
+  ├─ OpenCV: calidad, detección y liveness heurístico
+  ├─ ONNX Runtime: embedding facial de 512 dimensiones
+  ├─ JWT de aplicación y autorización
+  └─ repositorio de Supabase
+        │
+        ├─ Supabase Auth: correo y contraseña
+        ├─ PostgreSQL + pgvector: perfiles y embeddings
+        ├─ RPC match_face_1n: búsqueda facial 1:N
+        ├─ Storage/avatars: fotografías
+        └─ recognition_events: auditoría y métricas
 ```
 
-React solamente captura la imagen, muestra el resultado y consume la API. La
-imagen, la contraseña y el embedding no se validan de forma definitiva en el
-navegador. La decisión de autenticación se toma en FastAPI y Supabase.
+## 2. Estado funcional actual
 
-### Objetivos funcionales
+- Registro facial con exactamente tres capturas consecutivas.
+- Validación individual de cada captura con `image_index` en errores.
+- Validación de resolución, tamaño, formato, brillo y desenfoque.
+- Liveness heurístico mediante movimiento y textura.
+- Extracción de tres embeddings ArcFace y promedio normalizado.
+- Detección de rostro no encontrado o múltiples rostros.
+- Comparación facial previa al registro con umbral `0.75`.
+- Si el rostro ya existe, el alta se rechaza con `409 USER_ALREADY_REGISTERED`
+  y el frontend cambia al modo de inicio de sesión.
+- Si no existe, se comprueba email/DNI y se guarda el perfil completo.
+- El registro facial no solicita ni almacena contraseñas.
+- Login tradicional independiente por correo y contraseña mediante Supabase Auth.
+- Login facial con tres capturas y JWT de aplicación.
+- Eventos exitosos y fallidos en `recognition_events`.
+- Dashboard vinculado a estadísticas y eventos reales de Supabase.
+- Operaciones de modificación y borrado protegidas por JWT y verificación facial.
 
-- Registrar usuarios desde una fotografía capturada por la cámara.
-- Evitar registros duplicados por rostro, correo o DNI.
-- Validar correo y contraseña contra Supabase Auth.
-- Validar el rostro contra embeddings almacenados en Supabase.
-- Exigir una similitud facial mínima del 75%.
-- Mostrar los datos del usuario reconocido antes de abrir el dashboard.
-- Cargar usuarios y fotografías desde Supabase, sin datos biométricos simulados.
-- Rechazar explícitamente la operación si Supabase no está configurado.
-
-## 2. Estructura del proyecto
+## 3. Estructura del proyecto
 
 ```text
 FACIAL_LOGIN/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py
-│   │   ├── config.py
+│   │   ├── main.py                 # aplicación FastAPI y health check
+│   │   ├── config.py               # variables de entorno
 │   │   ├── api/v1/
-│   │   │   ├── router.py
-│   │   │   ├── auth.py
-│   │   │   └── users.py
+│   │   │   ├── router.py           # composición de routers
+│   │   │   ├── auth.py             # credenciales, login facial e historial
+│   │   │   └── users.py            # registro y gestión de perfiles
 │   │   ├── core/
-│   │   │   ├── face_embedder.py
-│   │   │   ├── liveness.py
-│   │   │   └── security.py
+│   │   │   ├── security.py         # Bearer, JWT y permisos
+│   │   │   ├── liveness.py         # calidad y secuencia de imágenes
+│   │   │   └── face_embedder.py    # Haar + ArcFace ONNX
 │   │   ├── db/
 │   │   │   ├── supabase_client.py
 │   │   │   └── repositories/user_repository.py
@@ -64,353 +72,198 @@ FACIAL_LOGIN/
 │   └── .env.example
 ├── frontend/
 │   ├── src/
-│   │   ├── components/
-│   │   │   ├── FacialModal.tsx
-│   │   │   ├── AntiBotCaptcha.tsx
-│   │   │   └── Field.tsx
-│   │   ├── pages/
-│   │   │   ├── Login.tsx
-│   │   │   ├── Dashboard.tsx
-│   │   │   └── Home.tsx
+│   │   ├── components/FacialModal.tsx
+│   │   ├── components/AntiBotCaptcha.tsx
+│   │   ├── pages/Login.tsx
+│   │   ├── pages/Dashboard.tsx
 │   │   ├── services/recognitionApi.ts
-│   │   ├── config/env.ts
-│   │   ├── types/person.ts
-│   │   └── App.tsx
-│   ├── .env.example
+│   │   └── config/env.ts
 │   └── package.json
-├── docs/
-│   ├── README.md
-│   └── documentacion-completa.md
-├── Dockerfile
-├── render.yaml
+├── supabase/recognition_events.sql
+├── docs/documentacion-completa.md
 ├── requirements.txt
-└── README.md
+├── Dockerfile
+└── render.yaml
 ```
 
-## 3. Librerías y tecnologías utilizadas
+## 4. Librerías y servicios
 
-Esta aplicación está enfocada en autenticación facial. No ejecuta SciPy ni
-NLTK y no necesita esas librerías para registrar, comparar o identificar
-rostros.
+### Backend
 
-### 3.1 Backend Python
-
-Las dependencias están declaradas en `requirements.txt`.
-
-| Librería | Versión | Uso en el reconocimiento facial |
-|---|---:|---|
-| `fastapi` | `0.111.0` | Define los endpoints REST, valida solicitudes y devuelve respuestas HTTP |
-| `uvicorn[standard]` | `0.30.1` | Servidor ASGI para ejecutar FastAPI en desarrollo y producción |
-| `pydantic` | `2.7.4` | Modelos y validación de los payloads de login, registro e imágenes |
-| `pydantic-settings` | `2.3.4` | Carga y valida variables de entorno del backend |
-| `onnxruntime` | `1.30.0` | Ejecuta el modelo ArcFace ONNX para producir embeddings faciales |
-| `opencv-python-headless` | `4.10.0.82` | Decodifica imágenes, detecta rostros y calcula controles de calidad |
-| `numpy` | `1.26.4` | Manipula matrices, normaliza vectores y calcula la norma L2 |
-| `supabase` | `2.5.1` | Conecta con Auth, PostgreSQL, RPC y Storage de Supabase |
-| `python-jose[cryptography]` | `3.3.0` | Firma los JWT de sesión emitidos después del reconocimiento |
-| `python-multipart` | `0.0.9` | Soporte de formularios multipart para FastAPI y futuras cargas |
-
-### 3.2 Frontend React
-
-Las dependencias están declaradas en `frontend/package.json`.
-
-| Librería | Versión declarada | Uso |
-|---|---:|---|
-| `react` | `latest` | Componentes y estado de la interfaz |
-| `react-dom` | `latest` | Renderizado de React en el navegador |
-| `typescript` | `latest` | Tipado estático del frontend |
-| `vite` | `latest` | Servidor de desarrollo y empaquetado de producción |
-| `@vitejs/plugin-react` | `latest` | Integración de React y JSX/TSX con Vite |
-| `lucide-react` | `latest` | Iconos de cámara, usuario, estado y dashboard |
-| `@types/react` | `latest` | Tipos TypeScript para React |
-| `@types/react-dom` | `latest` | Tipos TypeScript para React DOM |
-
-El frontend usa `fetch` nativo para comunicarse con FastAPI. No incorpora un
-SDK de Supabase en el navegador: las operaciones sensibles se ejecutan desde
-el backend.
-
-### 3.3 APIs nativas del navegador
-
-Además de las dependencias npm, se utilizan APIs estándar del navegador:
-
-- `navigator.mediaDevices.getUserMedia`: acceso a la cámara de vídeo.
-- `HTMLVideoElement`: muestra el vídeo en tiempo real.
-- `HTMLCanvasElement`: captura un fotograma y lo convierte en JPEG/PNG.
-- `fetch`: envía las imágenes y recibe los perfiles reconocidos.
-- `localStorage`: conserva temporalmente el historial local del dashboard.
-- `IndexedDB`: conserva documentos cargados en el navegador.
-
-### 3.4 Servicios externos
-
-| Servicio | Uso |
+| Dependencia | Uso |
 |---|---|
-| Supabase Auth | Verificación de correo y contraseña |
-| Supabase PostgreSQL | Usuarios y embeddings faciales |
-| Supabase pgvector | Comparación vectorial 1:N |
-| Supabase Storage | Fotografías reales en el bucket `avatars` |
-| Render | Ejecución y despliegue del backend |
-| Vercel u hosting estático | Despliegue del frontend |
+| FastAPI | Endpoints REST, dependencias y respuestas HTTP |
+| Uvicorn | Servidor ASGI |
+| Pydantic/Pydantic Settings | Contratos, límites y configuración |
+| OpenCV | Decodificación, Haar Cascade, brillo, blur, Canny y movimiento |
+| NumPy | Matrices, norma L2 y promedio de embeddings |
+| ONNX Runtime | Ejecución CPU del modelo facial |
+| Supabase Python | Auth, tablas, RPC y Storage |
+| python-jose | Firma y lectura de JWT de aplicación |
 
-### 3.5 Librerías estándar y utilidades
+### Frontend
 
-El backend también utiliza módulos estándar de Python: `base64` para
-decodificar imágenes, `uuid` para nombrar archivos, `logging` para errores,
-`pathlib` para rutas, `shutil`, `urllib.request` y `zipfile` para descargar y
-extraer el modelo ONNX, `datetime` para expiración de tokens y `typing` para
-anotaciones.
-
-## 4. Componentes y responsabilidades
-
-| Componente | Responsabilidad |
+| Dependencia/API | Uso |
 |---|---|
-| `frontend` | Interfaz, cámara, formularios y dashboard |
-| `FacialModal` | Registro, previsualización, retoma de fotografía e inicio facial |
-| `Dashboard` | Reconocimiento desde cámara, métricas y datos de usuarios |
-| `recognitionApi.ts` | Cliente HTTP tipado para FastAPI |
-| `FastAPI` | Orquestación de validación, inferencia y persistencia |
-| `LightweightLiveness` | Decodificación, resolución, desenfoque e iluminación |
-| `FaceEmbedder` | Modelo ONNX y vector normalizado de 512 dimensiones |
-| `UserRepository` | Acceso exclusivo a Supabase y Storage |
-| `Supabase Auth` | Correo, contraseña y sesión de credenciales |
-| `PostgreSQL/pgvector` | Almacenamiento y búsqueda de embeddings |
-| `Supabase Storage` | Fotografías reales de los usuarios |
+| React + React DOM | Componentes y estado |
+| TypeScript | Tipado estático |
+| Vite | Desarrollo y build |
+| lucide-react | Iconografía |
+| `getUserMedia` | Acceso a cámara |
+| `HTMLVideoElement` | Vista de cámara |
+| `HTMLCanvasElement` | Captura JPEG |
+| `fetch` | Comunicación con FastAPI |
+| localStorage | Sesión y datos locales auxiliares |
+| IndexedDB | Documentos locales del dashboard |
 
-## 5. Modelo de datos en Supabase
+### Supabase
 
-La tabla principal utilizada por la aplicación es `usuarios`. Debe contener
-como mínimo:
+- **Auth:** login tradicional por correo y contraseña. El registro facial no
+  crea una cuenta Auth ni guarda contraseñas.
+- **PostgreSQL:** tabla `usuarios`.
+- **pgvector:** columna `face_embedding vector(512)`.
+- **RPC:** `match_face_1n`.
+- **Storage:** bucket `avatars`.
+- **Auditoría:** tabla `recognition_events`.
 
-```sql
-create extension if not exists vector;
+## 5. Modelo de datos
 
-create table public.usuarios (
-    id uuid primary key default gen_random_uuid(),
-    nombre varchar(150) not null,
-    apellido varchar(150) not null,
-    edad integer not null check (edad between 18 and 120),
-    telefono varchar(50) not null,
-    email varchar(200),
-    dni varchar(50),
-    imagen_url text not null,
-    face_embedding vector(512) not null,
-    created_at timestamptz not null default now()
-);
+El script oficial es [supabase/recognition_events.sql](../supabase/recognition_events.sql).
+Debe ejecutarse en Supabase SQL Editor.
 
-create index usuarios_email_idx on public.usuarios (lower(email));
-create index usuarios_dni_idx on public.usuarios (dni);
-```
+### `usuarios`
 
-Para que el resumen operativo sea persistente y consistente entre sesiones,
-también debe existir la tabla de eventos de reconocimiento:
-
-```sql
-create table public.recognition_events (
-    id uuid primary key default gen_random_uuid(),
-    user_id uuid references public.usuarios(id) on delete set null,
-    event_type varchar(40) not null default 'face_login',
-    similarity numeric(6,5),
-    recognized boolean not null default false,
-    success boolean not null default false,
-    source varchar(60) not null default 'dashboard',
-    message text,
-    error_code varchar(80),
-    metadata jsonb,
-    created_at timestamptz not null default now()
-);
-
-create index recognition_events_created_at_idx
-    on public.recognition_events (created_at desc);
-
--- Para instalaciones existentes:
-alter table public.recognition_events
-    alter column similarity drop not null,
-    add column if not exists event_type varchar(40) not null default 'face_login',
-    add column if not exists success boolean not null default false,
-    add column if not exists message text,
-    add column if not exists error_code varchar(80),
-    add column if not exists metadata jsonb;
-
-create or replace function public.match_face_for_user(
-    query_embedding vector(512),
-    match_threshold float,
-    target_user_id uuid
-)
-returns table (id uuid, similarity float)
-language sql stable
-as $$
-    select u.id, (1 - (u.face_embedding <=> query_embedding))::float
-    from public.usuarios u
-    where u.id = target_user_id
-      and 1 - (u.face_embedding <=> query_embedding) >= match_threshold;
-$$;
-```
-
-El backend registra los intentos reconocidos y no reconocidos desde los
-endpoints de reconocimiento facial y login facial. El endpoint
-`GET /api/v1/dashboard/stats` calcula desde Supabase los perfiles, intentos,
-porcentaje de coincidencias, no reconocidos y actividad diaria combinando altas
-de usuarios y validaciones.
-
-La contraseña no se almacena en `usuarios`. Las credenciales pertenecen a
-Supabase Auth. La columna `face_embedding` contiene el vector generado por
-ArcFace y normalizado con norma L2.
-
-### Restricciones importantes
-
-- La dimensión debe ser exactamente `512`.
-- No se deben insertar embeddings de 128 dimensiones.
-- `imagen_url` debe apuntar a una fotografía real del bucket `avatars`.
-- El registro solo acepta una data URL con prefijo `data:image/...`.
-- El correo y el DNI se comprueban antes de insertar.
-
-## 6. Función RPC de búsqueda facial
-
-La aplicación llama a `match_face_1n`. La función debe recibir el vector y el
-umbral, y devolver como mínimo un identificador y la similitud:
-
-```sql
-create or replace function public.match_face_1n(
-    query_embedding vector(512),
-    match_threshold float
-)
-returns table (
-    id uuid,
-    similarity float
-)
-language sql
-stable
-as $$
-    select
-        u.id,
-        1 - (u.face_embedding <=> query_embedding) as similarity
-    from public.usuarios u
-    where 1 - (u.face_embedding <=> query_embedding) >= match_threshold
-    order by u.face_embedding <=> query_embedding
-    limit 1;
-$$;
-```
-
-La implementación también acepta el nombre `user_id` si el RPC existente lo
-devuelve. Después de la coincidencia, el backend consulta la fila completa de
-`usuarios` para recuperar correo, DNI, teléfono, edad e imagen.
-
-## 7. Autenticación y autorización
-
-### 6.1 Inicio con correo y contraseña
-
-1. El usuario introduce correo y contraseña.
-2. React llama a `POST /api/v1/auth/login`.
-3. FastAPI normaliza el correo a minúsculas.
-4. FastAPI ejecuta `supabase.auth.sign_in_with_password`.
-5. Supabase devuelve el token o rechaza las credenciales.
-6. El backend responde con el token, el ID, el nombre y el rol.
-
-No existen credenciales hardcodeadas en el frontend.
-
-### 6.2 Inicio con rostro
-
-1. El usuario activa la cámara.
-2. React captura una fotografía.
-3. El backend verifica calidad y liveness básico.
-4. ArcFace genera un embedding de 512 dimensiones.
-5. Supabase ejecuta `match_face_1n`.
-6. Solo se acepta una similitud igual o superior a `0.75`.
-7. FastAPI obtiene el perfil completo desde `usuarios`.
-8. Se genera un JWT de aplicación.
-9. React muestra las credenciales reconocidas durante cinco segundos.
-10. Se abre el dashboard.
-
-Una similitud menor al 75% produce `401 FACE_NOT_RECOGNIZED`.
-
-## 8. Registro de un usuario
-
-El flujo de registro es:
+Campos usados por el backend:
 
 ```text
-Abrir cámara
-    │
-    ▼
-Capturar fotografía sin detener el vídeo
-    │
-    ├── Usar esta foto
-    └── Tomar otra
-    │
-    ▼
+id uuid
+nombre text
+apellido text
+edad integer
+telefono text
+email text nullable
+dni text nullable
+imagen_url text
+imagenes_urls jsonb
+face_embedding vector(512)
+face_embeddings jsonb
+face_registration_metadata jsonb
+created_at timestamptz
+```
+
+`face_embedding` es el promedio normalizado de las tres capturas.
+`face_embeddings` conserva los tres vectores individuales. Los metadatos
+incluyen muestras, consistencia, liveness y dimensión, pero nunca contraseña.
+
+### `recognition_events`
+
+```text
+id uuid
+user_id uuid nullable
+event_type varchar(40)
+similarity numeric(6,5) nullable
+recognized boolean
+success boolean
+source varchar(60)
+message text nullable
+error_code varchar(80) nullable
+metadata jsonb nullable
+created_at timestamptz
+```
+
+Eventos habituales:
+
+```text
+face_registration
+face_login
+credential_login
+face_recognition
+```
+
+Los errores se guardan con códigos como `FACE_NOT_RECOGNIZED`,
+`FACE_NOT_DETECTED`, `LIVENESS_MOTION_REQUIRED`, `POSSIBLE_REPLAY`,
+`FACE_SAMPLES_INCONSISTENT` y `USER_ALREADY_REGISTERED`.
+
+## 6. RPC de comparación facial
+
+La migración crea la función:
+
+```sql
+public.match_face_1n(
+    query_embedding vector(512),
+    match_threshold double precision default 0.75
+)
+```
+
+La función calcula:
+
+```sql
+1 - (u.face_embedding <=> query_embedding)
+```
+
+Devuelve el usuario con mayor similitud que supera el umbral. El backend
+vuelve a consultar el perfil por ID para obtener todos los datos personales.
+Si la RPC no existe, está desactualizada o la columna no tiene dimensión 512,
+el registro/login no debe considerarse operativo.
+
+## 7. Flujo de registro facial
+
+```text
+Usuario selecciona Registrarse
+        │
+        ▼
+Captura 1, 2 y 3 desde la cámara
+        │
+        ▼
 POST /api/v1/users/register
-    │
-    ├── Imagen capturada por cámara
-    ├── Calidad y liveness
-    ├── Embedding de 512 dimensiones
-    ├── Duplicado facial >= 75%
-    ├── Duplicado de email/DNI
-    ├── Subida a Storage
-    └── Inserción en usuarios
+        │
+        ├─ payload: nombre, apellido, edad, teléfono, email, DNI y 3 imágenes
+        ├─ valida data:image/* y límites Pydantic
+        ├─ valida cada imagen y reporta image_index
+        ├─ calcula liveness de la secuencia
+        ├─ extrae 3 embeddings de 512 dimensiones
+        ├─ calcula promedio normalizado
+        ├─ busca duplicado facial en match_face_1n
+        │    └─ coincidencia >= 0.75 → 409 y modo login
+        ├─ comprueba email/DNI
+        ├─ sube 3 imágenes a Storage
+        └─ inserta usuarios + parámetros de registro
 ```
 
-La vista previa lateral permite confirmar la imagen antes de enviarla. Si no
-existe el bucket `avatars`, el backend devuelve un error y no utiliza una
-imagen de sustitución.
+El orden de la comparación facial es intencional: evita subir imágenes y crear
+un usuario cuando el rostro ya está registrado. La respuesta exitosa incluye
+`validation_score` y `sample_count`.
 
-## 9. Validación de calidad y liveness
+El formulario de registro facial no tiene campo contraseña. La autenticación
+por correo/contraseña es un flujo separado de Supabase Auth.
 
-`LightweightLiveness` realiza validaciones previas al modelo:
-
-- Decodificación Base64.
-- Resolución mínima de `160 x 160`.
-- Desenfoque mediante varianza del Laplaciano.
-- Umbral de desenfoque: `60.0`.
-- Brillo medio entre `40` y `220`.
-
-Estos controles son validaciones de calidad y presencia básica, no sustituyen
-un sistema avanzado de detección anti-spoofing. Una foto borrosa, muy oscura,
-sobreexpuesta o demasiado pequeña se rechaza con `422`.
-
-## 10. Fotografías y Supabase Storage
-
-Crear un bucket público llamado `avatars` en Supabase Storage. La aplicación
-guarda los archivos con este patrón:
+## 8. Flujo de login facial
 
 ```text
-avatars/users/<uuid>.jpg
-avatars/users/<uuid>.png
+Tres capturas consecutivas
+        ▼
+Validación de calidad y liveness
+        ▼
+Tres embeddings → promedio normalizado
+        ▼
+match_face_1n(embedding, 0.75)
+        ├─ sin coincidencia → 401 FACE_NOT_RECOGNIZED
+        └─ coincidencia → evento + JWT de aplicación
 ```
 
-Se recomienda permitir:
+El frontend guarda el token en `veris_access_token`, carga el nombre y abre el
+dashboard después de mostrar brevemente la identidad reconocida.
 
-- `SELECT` público para mostrar la imagen del perfil.
-- `INSERT` únicamente mediante el flujo controlado del backend.
-- Políticas de actualización y eliminación restringidas al administrador.
+## 9. Login tradicional
 
-La aplicación no usa imágenes de Unsplash ni URLs de reemplazo.
-
-## 11. API del backend
-
-La API base es `/api/v1`.
-
-### Salud del servicio
-
-```http
-GET /health
-```
-
-Respuesta:
-
-```json
-{
-  "status": "healthy",
-  "service": "Biometric Enterprise Auth API",
-  "version": "1.0.0",
-  "supabase_configured": true,
-  "face_model_loaded": true
-}
-```
-
-### Credenciales
+Endpoint:
 
 ```http
 POST /api/v1/auth/login
 Content-Type: application/json
 ```
+
+Payload:
 
 ```json
 {
@@ -419,253 +272,154 @@ Content-Type: application/json
 }
 ```
 
-Respuesta exitosa:
+FastAPI normaliza el email y ejecuta `sign_in_with_password` en Supabase Auth.
+La respuesta contiene token, ID, nombre y rol. No se comparan imágenes en este
+flujo y no se consulta una contraseña en `usuarios`.
 
-```json
-{
-  "access_token": "eyJ...",
-  "token_type": "bearer",
-  "user_id": "uuid",
-  "nombre": "Persona",
-  "role": "Usuario"
-}
-```
+## 10. Validación de imágenes y liveness
 
-### Login facial
+`LightweightLiveness` aplica:
 
-```http
-POST /api/v1/auth/login-face
-Content-Type: application/json
-```
+- Base64 válido y prefijo `data:image/`.
+- Máximo aproximado de 5 MiB decodificados.
+- Dimensión mínima `160 x 160`.
+- Dimensión máxima `4096 x 4096`.
+- Máximo `16_000_000` píxeles.
+- Varianza del Laplaciano mínima `60.0`.
+- Brillo medio entre `40` y `220`.
+- Tres capturas obligatorias.
+- Movimiento mínimo `0.015`.
+- Textura mínima `0.02` cuando el movimiento también es bajo.
 
-```json
-{
-  "imagen_base64": "data:image/jpeg;base64,..."
-}
-```
+El movimiento y la textura son heurísticas de defensa en profundidad, no un
+modelo anti-spoofing certificado. Para alta seguridad debe añadirse un modelo
+anti-replay/anti-spoofing entrenado y calibrado.
 
-Respuesta exitosa:
+## 11. Embeddings y detección
 
-```json
-{
-  "access_token": "eyJ...",
-  "token_type": "bearer",
-  "user_id": "uuid",
-  "nombre": "Nombre Apellido",
-  "match_percentage": "86.42%",
-  "email": "persona@example.com",
-  "dni": "12345678",
-  "edad": 25,
-  "telefono": "999999999"
-}
-```
+`FaceEmbedder`:
 
-### Reconocimiento para dashboard
+1. Detecta el rostro con Haar frontal y un clasificador alternativo.
+2. Rechaza ningún rostro (`FACE_NOT_DETECTED`) y múltiples rostros claramente
+   separados (`MULTIPLE_FACES_DETECTED`).
+3. Recorta el rostro con margen.
+4. Redimensiona a `112 x 112`.
+5. Normaliza el tensor para ArcFace.
+6. Ejecuta `w600k_mbf.onnx` con `CPUExecutionProvider`.
+7. Valida 512 dimensiones, finitud y norma distinta de cero.
+8. Normaliza cada vector y promedia las tres capturas.
 
-```http
-POST /api/v1/face-recognition/recognize
-Content-Type: application/json
-```
+El modelo se descarga desde `buffalo_s.zip` durante la preparación si falta el
+archivo local. El despliegue limita ONNX Runtime a un hilo intra/inter para
+reducir consumo de memoria.
 
-```json
-{
-  "image": "data:image/jpeg;base64,..."
-}
-```
+## 12. API principal
 
-Cuando encuentra una persona, devuelve nombre, datos personales, `imagen_url`
-y `similarity`. Cuando no encuentra una coincidencia, devuelve campos vacíos y
-similitud `0`; el frontend muestra una alerta amarilla.
+Base: `/api/v1`.
 
-### Usuarios
+| Método | Ruta | Protección | Uso |
+|---|---|---|---|
+| GET | `/health` | pública | estado de servicio, Supabase y modelo |
+| POST | `/auth/login` | pública | email + contraseña en Supabase Auth |
+| POST | `/auth/login-face` | pública | login facial con 3 imágenes |
+| GET | `/auth/history` | Bearer | historial de eventos |
+| GET | `/auth/events` | Bearer | alias del historial |
+| GET | `/users` | Bearer | listar perfiles |
+| POST | `/users/register` | pública | alta facial con datos del formulario |
+| PATCH | `/users/{id}` | Bearer + verificación | editar perfil |
+| DELETE | `/users/{id}` | Bearer + verificación | eliminar perfil |
+| POST | `/users/{id}/verify-face` | Bearer | token de operación facial |
+| POST | `/face-recognition/recognize` | Bearer | reconocimiento para dashboard |
+| GET | `/dashboard/stats` | Bearer | métricas agregadas |
 
-```http
-GET    /api/v1/users
-POST   /api/v1/users/register
-PATCH  /api/v1/users/{user_id}
-DELETE /api/v1/users/{user_id}
-POST   /api/v1/users/{user_id}/verify-face
-GET    /api/v1/auth/history
-```
+## 13. Seguridad y permisos
 
-`PATCH` y `DELETE` requieren un `Authorization: Bearer ...` válido del usuario
-objetivo y el header `X-Face-Verification-Token` obtenido en
-`verify-face`. La confirmación facial es de un solo propósito, está firmada y
-expira en cinco minutos. `auth/history` devuelve únicamente los
-intentos del usuario autenticado, incluyendo logins faciales fallidos y
-credenciales rechazadas; nunca almacena contraseñas ni imágenes.
+- Los endpoints sensibles exigen `Authorization: Bearer <token>`.
+- Se diferencian token ausente, inválido y expirado.
+- Las ediciones y eliminaciones se limitan al usuario autenticado o rol
+  administrativo, además de requerir verificación facial de propósito único.
+- Los tokens tienen expiración configurada por `ACCESS_TOKEN_EXPIRE_MINUTES`.
+- No se devuelven embeddings al navegador.
+- No se registran contraseñas, imágenes Base64 ni tokens en auditoría.
+- La clave privada de Supabase solo debe estar en el backend.
+- En producción se recomienda `service_role` exclusivamente en Render, nunca
+  en variables `VITE_*`.
 
-Registro:
+La tabla de auditoría tiene RLS. El archivo SQL incluye las políticas que
+permiten al cliente configurado por el backend insertar y leer eventos; deben
+revisarse si se cambia a acceso directo desde el navegador.
 
-```json
-{
-  "nombre": "Ana",
-  "apellido": "Pérez",
-  "edad": 25,
-  "telefono": "999999999",
-  "email": "ana@example.com",
-  "dni": "12345678",
-  "imagen_base64": "data:image/jpeg;base64,..."
-}
-```
+## 14. Configuración
 
-## 12. Respuestas de error
-
-| Código | Error | Causa |
-|---:|---|---|
-| 400 | Imagen inválida | Base64 no decodificable |
-| 401 | `INVALID_CREDENTIALS` | Correo o contraseña incorrectos |
-| 401 | `FACE_NOT_RECOGNIZED` | Similitud facial menor al 75% |
-| 409 | `USER_ALREADY_REGISTERED` | Rostro, correo o DNI duplicado |
-| 422 | `CAMERA_IMAGE_REQUIRED` | Registro sin imagen real de cámara |
-| 422 | Error de calidad | Imagen pequeña, borrosa o con mala iluminación |
-| 503 | `SUPABASE_NOT_CONFIGURED` | Backend sin URL o clave válida |
-| 503 | `AVATAR_STORAGE_UNAVAILABLE` | Bucket o políticas de Storage incorrectas |
-| 500 | Error interno | Fallo inesperado de procesamiento |
-
-El frontend conserva el mensaje del backend y no sustituye un error con datos
-falsos.
-
-## 13. Contrato de configuración
-
-### Backend: `backend/.env`
+### Backend
 
 ```env
 SUPABASE_URL=https://<project-ref>.supabase.co
-SUPABASE_KEY=<supabase-anon-key>
-JWT_SECRET=<secret-largo-y-aleatorio>
+SUPABASE_KEY=<clave-del-servidor>
+JWT_SECRET=<secreto-aleatorio-de-al-menos-32-caracteres>
 JWT_ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=480
 ALLOWED_ORIGINS=https://<frontend-domain>,http://localhost:5173
 ```
 
-El backend lee `.env` y `backend/.env`. No se deben subir valores reales al
-repositorio. `SUPABASE_KEY` debe ser la clave anónima para las operaciones
-previstas por la API; las claves de servicio deben mantenerse únicamente en
-el servidor y nunca exponerse a Vite.
-
-### Frontend: `frontend/.env.local`
+### Frontend
 
 ```env
 VITE_API_URL=https://<backend-domain>/api
 ```
 
-Vite expone al navegador todas las variables con prefijo `VITE_`. Por eso no se
-debe colocar `SUPABASE_KEY`, `JWT_SECRET` ni ninguna clave privada en el
-frontend.
+No colocar `SUPABASE_KEY`, `JWT_SECRET` ni claves de servicio en el frontend.
+Si falta `VITE_API_URL`, el cliente falla explícitamente y no genera datos
+ficticios de reconocimiento.
 
-Si falta `VITE_API_URL`, el cliente marca la API como no configurada y las
-operaciones reales fallan explícitamente; no se genera reconocimiento de
-demostración.
+## 15. Storage
 
-## 14. Integración frontend
+Crear un bucket llamado `avatars`. El backend conserva las imágenes capturadas
+con nombres UUID y guarda sus URLs en `imagen_url` e `imagenes_urls`.
 
-`recognitionApi.ts` centraliza las llamadas HTTP. La configuración normaliza
-URLs como:
+Si Storage no está configurado, el endpoint devuelve
+`503 AVATAR_STORAGE_UNAVAILABLE`; no se guarda una imagen de sustitución.
 
-```text
-https://backend.example.com/api
-https://backend.example.com/api/v1
-https://backend.example.com
-```
+## 16. Dashboard
 
-El resultado de reconocimiento se transforma al tipo `PersonRecord`. El
-dashboard:
+`Dashboard.tsx` consume `getDashboardStats`, `listUsers` y
+`listAuditEvents`. Las tarjetas y gráficos se vinculan a:
 
-- carga usuarios con `GET /api/v1/users`;
-- captura desde la cámara;
-- ejecuta reconocimiento automáticamente;
-- completa los campos personales;
-- sustituye la captura por `imagen_url` de Supabase;
-- muestra alerta amarilla si no hay coincidencia;
-- calcula las métricas de perfiles a partir de los datos cargados.
+- perfiles registrados desde `usuarios`;
+- validaciones y reconocimientos desde `recognition_events`;
+- porcentaje de reconocimiento;
+- actividad por día;
+- eventos recientes;
+- fotografía remota de Storage.
 
-La transición de login facial al dashboard espera cinco segundos para que el
-usuario pueda revisar la identidad reconocida.
+Los documentos cargados por el operador siguen siendo locales de IndexedDB.
+No deben confundirse con los perfiles biométricos ni con la auditoría de
+Supabase.
 
-## 15. Dashboard y métricas
+## 17. Errores principales
 
-El dashboard contiene las secciones:
+| HTTP | Código | Significado |
+|---:|---|---|
+| 400 | `INVALID_IMAGE_ENCODING` | Base64 inválido |
+| 401 | `INVALID_CREDENTIALS` | Credenciales tradicionales incorrectas |
+| 401 | `FACE_NOT_RECOGNIZED` | Similitud menor al 75% |
+| 401 | `TOKEN_INVALID` / `TOKEN_EXPIRED` | JWT ausente, inválido o expirado |
+| 409 | `USER_ALREADY_REGISTERED` | Rostro, email o DNI duplicado |
+| 413 | `IMAGE_TOO_LARGE` | Imagen o resolución excesiva |
+| 422 | `FACE_NOT_DETECTED` | No se encontró rostro |
+| 422 | `MULTIPLE_FACES_DETECTED` | Hay más de un rostro |
+| 422 | `LIVENESS_MOTION_REQUIRED` | Movimiento insuficiente |
+| 422 | `POSSIBLE_REPLAY` | Textura y movimiento compatibles con replay |
+| 422 | `FACE_SAMPLES_INCONSISTENT` | Las tres capturas no son consistentes |
+| 503 | `SUPABASE_NOT_CONFIGURED` | Faltan variables de Supabase |
+| 503 | `AVATAR_STORAGE_UNAVAILABLE` | Bucket o política de Storage incorrectos |
 
-- **Resumen:** cantidad de perfiles, validaciones, tasa de reconocimiento y
-  no reconocidos.
-- **Reconocer:** cámara, coincidencia, calidad, modelo y estado.
-- **Personas:** datos y fotografías provenientes de Supabase.
-- **Historial:** eventos de validación almacenados en el navegador.
-
-### Estado actual de persistencia
-
-Los perfiles, fotografías y métricas de reconocimiento se consultan desde
-Supabase. Los eventos se almacenan en `recognition_events`, por lo que el
-historial no se pierde al cerrar la página ni depende del navegador usado.
-La documentación cargada por el operador se conserva en IndexedDB con el
-contenido binario del archivo, de modo que permanece disponible después de
-cerrar y volver a abrir la página en el mismo navegador y perfil. Para
-compartir documentación entre dispositivos debe migrarse ese flujo a un bucket
-de Supabase Storage con políticas de acceso equivalentes.
-
-## 16. Flujo completo de reconocimiento
-
-```text
-Usuario
-  │
-  ▼
-React/Webcam captura data:image/...
-  │
-  ▼
-POST /api/v1/face-recognition/recognize
-  │
-  ▼
-FastAPI decodifica y valida calidad
-  │
-  ▼
-OpenCV detecta el rostro más grande
-  │
-  ▼
-ONNX/ArcFace genera vector normalizado de 512 dimensiones
-  │
-  ▼
-Supabase RPC match_face_1n
-  │
-  ├── similarity < 0.75 → no reconocido
-  │
-  └── similarity >= 0.75
-          │
-          ▼
-     SELECT usuarios por id
-          │
-          ▼
-     Perfil e imagen de Supabase
-          │
-          ▼
-     Dashboard autocompletado
-```
-
-## 17. Modelo facial y despliegue
-
-El backend utiliza `w600k_mbf.onnx`, distribuido dentro de `buffalo_s.zip`.
-Este modelo produce embeddings de 512 dimensiones y se ejecuta con
-`CPUExecutionProvider`.
-
-El `Dockerfile` descarga el modelo cuando no está disponible en la imagen.
-Durante el despliegue se limita el uso de ONNX Runtime a un hilo intraoperativo
-y uno interoperativo para reducir el consumo de memoria en Render.
-
-Variables de salud que deben comprobarse:
-
-```text
-supabase_configured = true
-face_model_loaded = true
-```
-
-## 18. Desarrollo local
+## 18. Desarrollo y validación
 
 ### Backend
 
 ```bash
-cd /workspaces/FACIAL_LOGIN
-/workspaces/FACIAL_LOGIN/.venv/bin/python -m uvicorn backend.app.main:app \
-  --reload --host 0.0.0.0 --port 8000
+python -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ### Frontend
@@ -676,121 +430,32 @@ npm install
 npm run dev
 ```
 
-Abrir `http://localhost:5173`. El backend debe permitir ese origen en
-`ALLOWED_ORIGINS`.
-
-### Verificaciones
+### Validaciones del repositorio
 
 ```bash
-/workspaces/FACIAL_LOGIN/.venv/bin/python -m compileall -q backend/app
+python -m compileall -q backend
 cd frontend && npm run build
 git diff --check
 ```
 
-## 19. Producción con Render y frontend estático
+### Pruebas manuales mínimas
 
-### Backend
+1. Registro nuevo con tres capturas válidas.
+2. Repetición del mismo rostro: debe devolver `409` y cambiar a login.
+3. Registro con email o DNI duplicado.
+4. Captura 1, 2 o 3 inválida: revisar `image_index`.
+5. Login facial correcto.
+6. Login de una persona no registrada.
+7. Login tradicional correcto e incorrecto.
+8. Revisión de `recognition_events`.
+9. Reconocimiento desde Dashboard con token válido y expirado.
 
-1. Configurar el servicio web de Render con el repositorio.
-2. Instalar `requirements.txt`.
-3. Definir `SUPABASE_URL`, `SUPABASE_KEY`, `JWT_SECRET` y `ALLOWED_ORIGINS`.
-4. Confirmar que el modelo ONNX se descarga durante el build.
-5. Verificar `GET /health`.
+## 19. Pendientes recomendados
 
-### Frontend
-
-1. Configurar `VITE_API_URL` en el proveedor del frontend.
-2. Usar el valor del backend terminado en `/api`.
-3. Reconstruir el frontend después de cambiar variables `VITE_*`.
-4. Añadir el dominio frontend a `ALLOWED_ORIGINS`.
-
-### Prueba posterior al despliegue
-
-```bash
-curl https://<backend-domain>/health
-```
-
-Debe indicar que Supabase y el modelo están disponibles. A continuación se
-debe probar registro, login facial, login por credenciales y reconocimiento
-desde el dashboard con un usuario real.
-
-## 20. Seguridad y operación
-
-- No almacenar contraseñas en `usuarios`.
-- No exponer claves privadas en archivos `VITE_*`.
-- Rotar `JWT_SECRET` si se filtra.
-- Restringir CORS a dominios conocidos en producción.
-- Aplicar políticas RLS en `usuarios`.
-- Mantener privado el acceso de escritura a Storage.
-- Validar el tamaño máximo de las imágenes antes de procesarlas.
-- Registrar errores sin guardar imágenes Base64 ni tokens en logs.
-- No devolver embeddings al frontend.
-- Usar HTTPS en frontend, backend y Supabase.
-- Revisar periódicamente las políticas del bucket `avatars`.
-
-## 21. Fases de desarrollo y mantenimiento
-
-### Fase 1 — Base biométrica implementada
-
-- React, TypeScript, Vite y FastAPI.
-- Configuración por variables de entorno.
-- Modelo ONNX de 512 dimensiones.
-- Supabase Auth, PostgreSQL, pgvector y Storage.
-
-### Fase 2 — Registro y autenticación implementados
-
-- Registro con cámara.
-- Vista previa y repetición de captura.
-- Detección de duplicados.
-- Login por credenciales.
-- Login facial con umbral del 75%.
-
-### Fase 3 — Dashboard implementado
-
-- Reconocimiento desde cámara.
-- Autocompletado del perfil.
-- Fotografía almacenada en Supabase.
-- Métricas de perfiles.
-- Contexto visual por pestaña.
-
-### Fase 4 — Observabilidad recomendada
-
-- Tabla `recognition_events`.
-- Historial centralizado en Supabase.
-- Métricas multiusuario.
-- Alertas de disponibilidad de RPC, Storage y modelo.
-
-### Fase 5 — Endurecimiento recomendado
-
-- Anti-spoofing avanzado.
-- Rate limiting.
-- RLS revisado con pruebas negativas.
-- Auditoría de accesos.
-- Retención y eliminación segura de datos biométricos.
-- Pruebas automatizadas de integración.
-
-## 22. Matriz de comprobación operativa
-
-| Comprobación | Resultado esperado |
-|---|---|
-| `GET /health` | `status=healthy` |
-| Salud de Supabase | `supabase_configured=true` |
-| Modelo facial | `face_model_loaded=true` |
-| Registro sin cámara | `422 CAMERA_IMAGE_REQUIRED` |
-| Registro duplicado | `409 USER_ALREADY_REGISTERED` |
-| Rostro desconocido | `401` en login facial |
-| Similitud menor a 75% | Acceso rechazado |
-| Usuario reconocido | Perfil completo y fotografía de Supabase |
-| Bucket inexistente | `503 AVATAR_STORAGE_UNAVAILABLE` |
-| `VITE_API_URL` ausente | Error explícito, sin datos simulados |
-
-## 23. Limitaciones conocidas
-
-- El historial del dashboard se centraliza en `recognition_events` de Supabase.
-- El detector Haar puede no detectar todos los rostros en condiciones difíciles.
-- La validación de liveness actual es básica y no equivale a una certificación
-  anti-spoofing.
-- La coincidencia depende de que la función `match_face_1n` esté creada
-  correctamente en el proyecto Supabase.
-- Los cambios locales deben desplegarse para que estén activos en Render y en
-  el proveedor del frontend.
+- Sustituir el liveness heurístico por anti-spoofing entrenado.
+- Añadir rate limiting por IP, usuario y endpoint facial.
+- Crear pruebas automatizadas de RPC, Storage, RLS y permisos negativos.
+- Añadir refresh token si la sesión debe durar más que el JWT actual.
+- Calibrar el umbral `0.75` con falsos positivos y falsos negativos reales.
+- Definir retención y eliminación segura de embeddings e imágenes.
+- Revisar periódicamente las políticas RLS de `usuarios`, Storage y auditoría.

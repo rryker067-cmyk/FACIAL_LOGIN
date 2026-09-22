@@ -104,6 +104,7 @@ class LightweightLiveness:
                 detail={"error": "LIVENESS_SEQUENCE_REQUIRED", "message": "Se requieren tres capturas consecutivas."},
             )
 
+        # Validar cada índice permite informar exactamente qué captura falló.
         frames = []
         for index, image in enumerate(images):
             try:
@@ -130,6 +131,7 @@ class LightweightLiveness:
                         "message": f"No se pudo validar la captura {index + 1}.",
                     },
                 ) from err
+        # Movimiento entre frames y textura aportan señales básicas contra replay.
         gray_frames = [cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) for frame in frames]
         motion_scores = []
         for previous, current in zip(gray_frames, gray_frames[1:]):

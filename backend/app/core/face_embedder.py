@@ -118,6 +118,7 @@ class FaceEmbedder:
 
     def extract_embedding(self, cv2_image: np.ndarray) -> list[float]:
         try:
+            # Preprocesamiento común para registro, login y reconocimiento del dashboard.
             face_image = self._crop_face(cv2_image)
             resized = cv2.resize(face_image, (112, 112))
             rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
@@ -134,6 +135,7 @@ class FaceEmbedder:
                     "El servicio no puede realizar reconocimiento biométrico."
                 )
 
+            # El contrato de Supabase exige un vector finito y normalizado de 512 valores.
             raw_embedding = np.asarray(raw_embedding, dtype=np.float32).reshape(-1)
             if raw_embedding.size != self.EMBEDDING_DIMENSION:
                 raise ValueError(

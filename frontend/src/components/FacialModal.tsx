@@ -143,6 +143,7 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
   };
 
   const captureLivenessSequence = async (): Promise<string[]> => {
+    // Las tres capturas se espacian para que el backend pueda medir movimiento.
     const captures: string[] = [];
     for (let index = 0; index < 3; index += 1) {
       setMessage(
@@ -172,6 +173,7 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
 
     window.setTimeout(async () => {
       try {
+        // El backend vuelve a validar la secuencia; el cliente solo coordina la UX.
         setScanning(false);
         await waitForVideoFrame();
         const sequence = await captureLivenessSequence();
@@ -265,6 +267,7 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
     };
 
     try {
+      // El alta real ocurre en FastAPI; localStorage solo conserva una referencia visual.
       const response = await registerUserWithFace({
         nombre: registerName.trim().split(' ')[0] || registerName.trim(),
         apellido: registerName.trim().split(' ').slice(1).join(' ') || 'Registrado',

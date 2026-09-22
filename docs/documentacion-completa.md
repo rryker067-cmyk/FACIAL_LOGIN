@@ -405,8 +405,8 @@ El dashboard tiene dos puntos de captura independientes:
    `POST /api/v1/face-recognition/recognize`. FastAPI valida calidad, detecta
    el rostro, consulta `match_face_1n` y registra un evento con
    `source = 'dashboard'`. Cuando la similitud supera el umbral configurado,
-   el ciclo de análisis se detiene y conserva el resultado; el video permanece
-   visible y activo. Para iniciar un nuevo análisis se debe apagar y volver a
+   el ciclo de análisis se detiene, se liberan las pistas de la cámara y se
+   conserva el resultado. Para iniciar un nuevo análisis se debe volver a
    activar la cámara. El frame técnico no se presenta como una foto de entrada
    ni se usa como sustituto del perfil almacenado.
 2. **Editar o eliminar una persona:** `startVerifyCamera` abre una cámara

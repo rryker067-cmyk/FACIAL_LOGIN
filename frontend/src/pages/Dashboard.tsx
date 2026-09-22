@@ -553,6 +553,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
   const recognizedCount = dashboardStats?.recognized_count ?? validationHistory.filter((item) => item.status === 'success').length
   const failedCount = dashboardStats?.unrecognized_count ?? validationHistory.filter((item) => item.status === 'failed').length
   const validationCount = dashboardStats?.validation_count ?? validationHistory.length
+  const registeredCount = dashboardStats?.registered_count ?? registeredUsers.length
   const recognitionRate = dashboardStats?.recognition_rate ?? (validationHistory.length
     ? Math.round((recognizedCount / validationHistory.length) * 100)
     : 0)
@@ -580,6 +581,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     user: item.name,
     time: item.time,
   }))
+  const latestEvent = auditEvents[0]
   const formatDate = (value: string) => {
     const date = new Date(value)
     return Number.isNaN(date.getTime()) ? value : date.toLocaleString('es-PE', { dateStyle: 'short', timeStyle: 'short' })
@@ -596,11 +598,11 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
   }
   const context = tabContext[activeSection] || tabContext.resumen
   const contextMetrics = activeSection === 'personas'
-    ? [registeredUsers.length, registeredUsers.filter((user) => user.email).length, registeredUsers.filter((user) => user.dni).length, registeredUsers.filter((user) => user.imagen_url).length]
+    ? [registeredCount, registeredUsers.filter((user) => user.email).length, registeredUsers.filter((user) => user.dni).length, registeredUsers.filter((user) => user.imagen_url).length]
     : activeSection === 'documentacion'
       ? [documents.length, documents.filter((item) => item.type === 'application/pdf').length, documents.filter((item) => item.type.startsWith('image/')).length, 'Local']
       : activeSection === 'historial'
-        ? [validationHistory.length, recognizedCount, failedCount, `${recognitionRate}%`]
+      ? [validationCount, recognizedCount, failedCount, `${recognitionRate}%`]
         : activeSection === 'reconocer'
           ? [`${faceMatch}%`, `${registrationConfidence}%`, form.nombre ? 'OK' : '—', form.nombre ? 'Reconocido' : 'Pendiente']
           : ['—', '—', '—', '—']
@@ -653,7 +655,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
           <div className="page-heading"><div><div className="eyebrow"><span /> {context.eyebrow}</div><h1>{context.title}</h1><p>{context.description}</p></div><div className="heading-meta"><span className="live-dot" /> {appConfig.usesDemoRecognition ? 'API no configurada' : 'API conectada'} <small>FastAPI · Supabase</small></div></div>
 
           <section className={`dashboard-overview ${activeSection === 'resumen' ? '' : 'dashboard-section-hidden'}`} aria-label="Resumen de métricas">
-            <div className="metric-card metric-card--success"><span className="metric-label">Personas registradas</span><strong>{registeredUsers.length}</strong><small><UsersRound size={12} /> perfiles biométricos</small></div>
+            <div className="metric-card metric-card--success"><span className="metric-label">Personas registradas</span><strong>{registeredCount}</strong><small><UsersRound size={12} /> perfiles biométricos</small></div>
             <div className="metric-card"><span className="metric-label">Validaciones</span><strong>{validationCount}</strong><small><Activity size={12} /> intentos procesados</small></div>
             <div className="metric-card"><span className="metric-label">Tasa de reconocimiento</span><strong>{recognitionRate}%</strong><small><CheckCircle2 size={12} /> coincidencias exitosas</small></div>
             <div className="metric-card"><span className="metric-label">No reconocidos</span><strong>{failedCount}</strong><small><Clock3 size={12} /> requieren registro</small></div>
@@ -661,7 +663,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
 
           <section className={`analytics-grid ${activeSection === 'resumen' ? '' : 'dashboard-section-hidden'}`} aria-label="Analítica facial">
             <div className="panel analytics-panel"><div className="panel-heading compact-heading"><div><span className="section-kicker">ACTIVIDAD</span><h2>Actividad de los últimos 7 días</h2></div><BarChart3 size={19} /></div><div className="bar-chart">{chartValues.map((item) => <div className="bar-column" key={item.label}><span>{item.count}</span><div className="bar-track"><i style={{ height: `${Math.max((item.count / maxChartValue) * 100, item.count ? 12 : 4)}%` }} /></div><small>{item.label}</small></div>)}</div></div>
-            <div className="panel analytics-panel"><div className="panel-heading compact-heading"><div><span className="section-kicker">ESTADO</span><h2>Rendimiento del servicio</h2></div><Server size={19} /></div><div className="service-health"><div><span className="health-icon"><CheckCircle2 size={17} /></span><div><b>API de reconocimiento</b><small>{appConfig.usesDemoRecognition ? 'API no configurada' : 'Conectada y operativa'}</small></div><strong>{appConfig.usesDemoRecognition ? '—' : '100%'}</strong></div><div><span className="health-icon"><Database size={17} /></span><div><b>Persistencia de usuarios</b><small>{registeredUsers.length ? 'Datos cargados desde Supabase' : 'Sin perfiles en Supabase'}</small></div><strong>{registeredUsers.length ? 'OK' : '—'}</strong></div></div></div>
+            <div className="panel analytics-panel"><div className="panel-heading compact-heading"><div><span className="section-kicker">ESTADO</span><h2>Rendimiento del servicio</h2></div><Server size={19} /></div><div className="service-health"><div><span className="health-icon"><CheckCircle2 size={17} /></span><div><b>API de reconocimiento</b><small>{appConfig.usesDemoRecognition ? 'API no configurada' : dashboardStats ? 'Conectada y operativa' : 'Sin respuesta'}</small></div><strong>{appConfig.usesDemoRecognition || !dashboardStats ? '—' : 'OK'}</strong></div><div><span className="health-icon"><Database size={17} /></span><div><b>Persistencia de usuarios</b><small>{dashboardStats ? 'Datos cargados desde Supabase' : 'Sin respuesta de Supabase'}</small></div><strong>{dashboardStats ? 'OK' : '—'}</strong></div></div></div>
           </section>
 
           <div className="steps" aria-label={`Contexto de ${context.title}`}><div className="step step--active"><span>01</span><b>{context.steps[0]}</b></div><div className="step-line" /><div className={`step ${preview || activeSection !== 'reconocer' ? 'step--active' : ''}`}><span>02</span><b>{context.steps[1]}</b></div><div className="step-line" /><div className={`step ${isSaved || activeSection !== 'reconocer' ? 'step--active' : ''}`}><span>03</span><b>{context.steps[2]}</b></div></div>
@@ -831,7 +833,19 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
 
             <div className="recent-panel">
               <div><span className="section-kicker">ACTIVIDAD RECIENTE</span><h2>Último registro</h2></div>
-              <div className="empty-state">Aún no hay registros recibidos.</div>
+              {latestEvent ? (
+                <div className="recent-event-summary">
+                  <b>{latestEvent.event_type} · {latestEvent.source}</b>
+                  <span>
+                    {latestEvent.message || (latestEvent.success ? 'Operación correcta' : latestEvent.error_code || 'Intento fallido')}
+                    {' · '}
+                    {formatDate(latestEvent.created_at)}
+                  </span>
+                  <strong className={latestEvent.success ? '' : 'history-result--failed'}>
+                    {latestEvent.similarity == null ? '—' : `${Math.round(latestEvent.similarity * 100)}%`}
+                  </strong>
+                </div>
+              ) : <div className="empty-state">Aún no hay registros recibidos.</div>}
             </div>
           </section>
 

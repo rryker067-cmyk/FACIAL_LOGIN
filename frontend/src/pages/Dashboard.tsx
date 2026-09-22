@@ -160,6 +160,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
   const [failedEventsVisible, setFailedEventsVisible] = useState(10)
   const [lastDashboardSync, setLastDashboardSync] = useState<string | null>(null)
   const [dashboardSyncing, setDashboardSyncing] = useState(false)
+  const [liveScanPaused, setLiveScanPaused] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const verifyVideoRef = useRef<HTMLVideoElement>(null)
@@ -392,6 +393,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
         throw new Error('getUserMedia no está disponible en este navegador.')
       }
       setRecognitionError(null)
+      setLiveScanPaused(false)
       closeCamera()
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: 640, height: 480, facingMode: 'user' },
@@ -411,6 +413,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
       liveScanTimerRef.current = null
     }
     liveScanInFlightRef.current = false
+    setLiveScanPaused(false)
     streamRef.current?.getTracks().forEach((track) => track.stop())
     streamRef.current = null
     if (videoRef.current) {
@@ -463,6 +466,13 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
       setForm((current) => ({ ...current, estado: isAcceptedMatch ? 'Reconocido' : 'No reconocido' }))
       setFaceMatch(isAcceptedMatch ? match : 0)
       setRegistrationConfidence(isAcceptedMatch ? Math.round(match) : 0)
+      if (isAcceptedMatch) {
+        setLiveScanPaused(true)
+        if (liveScanTimerRef.current !== null) {
+          window.clearInterval(liveScanTimerRef.current)
+          liveScanTimerRef.current = null
+        }
+      }
       try {
         await refreshDashboardData()
       } catch {
@@ -476,7 +486,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
   }
 
   useEffect(() => {
-    if (!isCameraOpen) return
+    if (!isCameraOpen || liveScanPaused) return
 
     const scanLiveFrame = async () => {
       if (liveScanInFlightRef.current || isRecognizing) return
@@ -500,7 +510,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
       }
       liveScanInFlightRef.current = false
     }
-  }, [isCameraOpen])
+  }, [isCameraOpen, liveScanPaused])
 
   const saveRecord = (event: FormEvent) => {
     event.preventDefault()
@@ -780,7 +790,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
             <div className="panel details-panel"><div className="panel-heading"><div><span className="section-kicker">PASO 02</span><h2>Datos personales</h2></div><span className="match-badge"><span /> Coincidencia lista</span></div>
               <div className={`recognition-live-status ${isCameraOpen ? 'is-active' : ''}`} role="status">
                 <ScanFace size={18} />
-                {isCameraOpen ? (isRecognizing ? 'Analizando el video en vivo...' : 'Análisis automático activo') : 'Activa la cámara para comenzar el análisis'}
+                {isCameraOpen ? (liveScanPaused ? 'Rostro detectado. Escaneo detenido.' : isRecognizing ? 'Analizando el video en vivo...' : 'Análisis automático activo') : 'Activa la cámara para comenzar el análisis'}
               </div>
               {recognitionError && <p className="recognition-error" role="alert">{recognitionError}</p>}
               <form onSubmit={saveRecord}><div className="form-grid"><Field label="Nombre" value={form.nombre} onChange={(value) => updateField('nombre', value)} placeholder="Ej. Valentina" /><Field label="Estado" value={form.estado || 'Pendiente'} onChange={() => undefined} placeholder="Pendiente" /><Field label="Edad" value={form.edad} onChange={(value) => updateField('edad', value)} placeholder="Años" type="number" /><Field label="DNI" value={form.dni} onChange={(value) => updateField('dni', value)} placeholder="8 dígitos" /><Field wide label="Correo electrónico" value={form.email || ''} onChange={(value) => updateField('email', value)} placeholder="correo@empresa.com" /><Field wide label="Número de teléfono" value={form.telefono} onChange={(value) => updateField('telefono', value)} placeholder="+51 000 000 000" /></div><div className="form-footer"><span className="required-note">* Campos requeridos</span><button type="submit" className="button button--primary" disabled={!form.nombre || !form.dni}>{isSaved ? <><Check size={16} /> Guardado</> : <><Database size={16} /> Guardar registro</>}</button></div></form>

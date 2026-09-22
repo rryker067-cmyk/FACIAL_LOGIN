@@ -156,6 +156,10 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
   const [globalSearch, setGlobalSearch] = useState('')
+  const [successfulEventsVisible, setSuccessfulEventsVisible] = useState(10)
+  const [failedEventsVisible, setFailedEventsVisible] = useState(10)
+  const [lastDashboardSync, setLastDashboardSync] = useState<string | null>(null)
+  const [dashboardSyncing, setDashboardSyncing] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const verifyVideoRef = useRef<HTMLVideoElement>(null)
@@ -192,6 +196,13 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     }
   }, [verifyCameraOpen])
 
+  useEffect(() => {
+    if (isCameraOpen && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current
+      void videoRef.current.play().catch(() => undefined)
+    }
+  }, [isCameraOpen])
+
   const applyDashboardData = (users: Array<PersonRecord & { id: string; email?: string; imagen_url?: string }>, stats: DashboardStats, events: AuditEvent[]) => {
     setRegisteredUsers(users.map((registeredUser) => ({
       ...registeredUser,
@@ -212,14 +223,26 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
   }
 
   const refreshDashboardData = async () => {
-    const [users, stats, events] = await Promise.all([listUsers(), getDashboardStats(), listAuditEvents()])
-    applyDashboardData(users, stats, events)
+    setDashboardSyncing(true)
+    try {
+      const [users, stats, events] = await Promise.all([listUsers(), getDashboardStats(), listAuditEvents()])
+      applyDashboardData(users, stats, events)
+      setLastDashboardSync(new Date().toISOString())
+    } finally {
+      setDashboardSyncing(false)
+    }
   }
 
   useEffect(() => {
     void refreshDashboardData().catch(() => {
       setRecognitionNotice('No se pudieron cargar las métricas desde Supabase.')
     })
+    const refreshTimer = window.setInterval(() => {
+      void refreshDashboardData().catch(() => {
+        setRecognitionNotice('No se pudo actualizar el estado en tiempo real desde Supabase.')
+      })
+    }, 15000)
+    return () => window.clearInterval(refreshTimer)
   }, [])
 
   const closeVerifyCamera = () => {
@@ -396,12 +419,6 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
       })
       streamRef.current = stream
       setIsCameraOpen(true)
-      window.setTimeout(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream
-          void videoRef.current.play().catch(() => undefined)
-        }
-      }, 0)
     } catch {
       setIsCameraOpen(false)
       setRecognitionError('No se pudo acceder a la cámara. Verifica los permisos del navegador.')
@@ -420,7 +437,10 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
 
   const capturePhoto = () => {
     const video = videoRef.current
-    if (!video) return
+    if (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || !video.videoWidth || !video.videoHeight) {
+      setRecognitionError('La cámara todavía no está lista. Espera a que aparezca la imagen e inténtalo de nuevo.')
+      return
+    }
     const canvas = document.createElement('canvas')
     canvas.width = video.videoWidth || 640
     canvas.height = video.videoHeight || 480
@@ -563,6 +583,15 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
   const matchesSearch = (value: string) => !normalizedSearch || value.toLocaleLowerCase('es').includes(normalizedSearch)
   const filteredRegisteredUsers = registeredUsers.filter((registeredUser) => matchesSearch(`${registeredUser.nombre} ${registeredUser.apellido} ${registeredUser.dni || ''} ${registeredUser.email || ''}`))
   const filteredAuditEvents = auditEvents.filter((event) => matchesSearch(`${event.event_type} ${event.source} ${event.message || ''} ${event.error_code || ''} ${event.user_id || ''}`))
+  const successfulEvents = filteredAuditEvents.filter((event) => event.success)
+  const failedEvents = filteredAuditEvents.filter((event) => !event.success)
+  const visibleSuccessfulEvents = successfulEvents.slice(0, successfulEventsVisible)
+  const visibleFailedEvents = failedEvents.slice(0, failedEventsVisible)
+
+  useEffect(() => {
+    setSuccessfulEventsVisible(10)
+    setFailedEventsVisible(10)
+  }, [globalSearch])
   const filteredDocuments = documents.filter((document) => {
     if (documentFilter === 'all') return true
     return getDocumentKindFromName(document.name, document.type) === documentFilter
@@ -585,6 +614,9 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     ? Math.round((recognizedCount / validationHistory.length) * 100)
     : 0)
   const alerts = auditEvents.filter((event) => !event.success)
+  const utilityRate = validationCount ? Math.round((recognizedCount / validationCount) * 100) : 0
+  const rejectionRate = validationCount ? Math.round((failedCount / validationCount) * 100) : 0
+  const integrationRecentEvents = auditEvents.slice(0, 10)
   const chartValues = Array.from({ length: 7 }, (_, index) => {
     const day = new Date()
     day.setDate(day.getDate() - (6 - index))
@@ -881,24 +913,62 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
               <div className="panel-heading compact-heading">
                 <div>
                   <span className="section-kicker">HISTORIAL</span>
-                  <h2>Validaciones recientes</h2>
+                  <h2>Procesos registrados</h2>
                 </div>
               </div>
 
-              <div className="history-list">
-                {filteredAuditEvents.length ? filteredAuditEvents.map((row) => (
-                  <div className="history-item" key={row.id}>
-                    <div className="history-name">
-                      <div className={`mini-avatar ${row.success ? '' : 'mini-avatar--failed'}`}>{row.success ? 'OK' : '!'}</div>
-                      <div>
-                        <b>{row.event_type} · {row.source}</b>
-                        <span>{row.message || (row.success ? 'Operación correcta' : row.error_code || 'Intento fallido')} · {row.success ? 'Exitoso' : 'Fallido'} · Usuario: {row.user_id || 'no identificado'} · {formatDate(row.created_at)}</span>
-                        {row.metadata && <small className="history-metadata">{JSON.stringify(row.metadata)}</small>}
-                      </div>
+              <div className="history-columns">
+                <div className="history-group">
+                  <div className="history-group-heading">
+                    <div>
+                      <b>Procesos exitosos</b>
+                      <span>{successfulEvents.length} registros</span>
                     </div>
-                    <strong className={row.success ? '' : 'history-result--failed'}>{row.similarity == null ? '—' : `${Math.round(row.similarity * 100)}%`}</strong>
+                    <span className="history-group-status history-group-status--success">Correctos</span>
                   </div>
-                )) : <div className="empty-state">{globalSearch ? 'No hay eventos que coincidan con la búsqueda.' : 'El historial aparecerá después de la primera validación.'}</div>}
+                  <div className="history-list">
+                    {visibleSuccessfulEvents.length ? visibleSuccessfulEvents.map((row) => (
+                      <div className="history-item" key={row.id}>
+                        <div className="history-name">
+                          <div className="mini-avatar">OK</div>
+                          <div>
+                            <b>{row.event_type} · {row.source}</b>
+                            <span>{row.message || 'Operación correcta'} · Usuario: {row.user_id || 'no identificado'} · {formatDate(row.created_at)}</span>
+                            {row.metadata && <small className="history-metadata">{JSON.stringify(row.metadata)}</small>}
+                          </div>
+                        </div>
+                        <strong>{row.similarity == null ? '—' : `${Math.round(row.similarity * 100)}%`}</strong>
+                      </div>
+                    )) : <div className="empty-state">{globalSearch ? 'No hay procesos exitosos que coincidan con la búsqueda.' : 'Aún no hay procesos exitosos.'}</div>}
+                  </div>
+                  {successfulEventsVisible < successfulEvents.length && <button type="button" className="history-more-button" onClick={() => setSuccessfulEventsVisible((current) => current + 10)}>Ver 10 procesos exitosos más</button>}
+                </div>
+
+                <div className="history-group">
+                  <div className="history-group-heading">
+                    <div>
+                      <b>Errores y procesos fallidos</b>
+                      <span>{failedEvents.length} registros</span>
+                    </div>
+                    <span className="history-group-status history-group-status--failed">Revisar</span>
+                  </div>
+                  <div className="history-list">
+                    {visibleFailedEvents.length ? visibleFailedEvents.map((row) => (
+                      <div className="history-item" key={row.id}>
+                        <div className="history-name">
+                          <div className="mini-avatar mini-avatar--failed">!</div>
+                          <div>
+                            <b>{row.event_type} · {row.source}</b>
+                            <span>{row.message || row.error_code || 'Intento fallido'} · Código: {row.error_code || 'sin código'} · Usuario: {row.user_id || 'no identificado'} · {formatDate(row.created_at)}</span>
+                            {row.metadata && <small className="history-metadata">{JSON.stringify(row.metadata)}</small>}
+                          </div>
+                        </div>
+                        <strong className="history-result--failed">{row.similarity == null ? '—' : `${Math.round(row.similarity * 100)}%`}</strong>
+                      </div>
+                    )) : <div className="empty-state">{globalSearch ? 'No hay errores que coincidan con la búsqueda.' : 'No hay errores registrados.'}</div>}
+                  </div>
+                  {failedEventsVisible < failedEvents.length && <button type="button" className="history-more-button history-more-button--failed" onClick={() => setFailedEventsVisible((current) => current + 10)}>Ver 10 errores más</button>}
+                </div>
               </div>
             </div>
 
@@ -1034,6 +1104,15 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
             </div>
             <div className={`panel dashboard-section ${activeSection === 'integraciones' ? '' : 'dashboard-section-hidden'}`} id="integraciones">
               <div className="panel-heading compact-heading"><div><span className="section-kicker">SERVICIOS</span><h2>Integraciones</h2></div><ExternalLink size={19} /></div>
+              <div className="integration-live-header">
+                <div>
+                  <b>Monitor de reconocimiento en tiempo real</b>
+                  <span>{lastDashboardSync ? `Última sincronización: ${formatDate(lastDashboardSync)}` : 'Esperando datos del backend'}</span>
+                </div>
+                <button type="button" className="button button--outline integration-refresh-button" onClick={() => void refreshDashboardData()} disabled={dashboardSyncing}>
+                  <Activity size={14} /> {dashboardSyncing ? 'Sincronizando...' : 'Actualizar ahora'}
+                </button>
+              </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginTop: 14 }}>
                 <div style={{ background: 'rgba(15, 23, 42, 0.72)', border: '1px solid rgba(148, 163, 184, 0.22)', borderRadius: 16, padding: 16 }}>
@@ -1063,6 +1142,25 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                   </div>
                   <p style={{ margin: 0, color: '#cbd5e1', lineHeight: 1.6 }}>API de reconocimiento facial, validación y lógica de negocio para la identidad digital corporativa.</p>
                 </div>
+              </div>
+              <div className="integration-metrics-grid">
+                <div className="integration-metric integration-metric--neutral"><span>Total de intentos</span><strong>{validationCount}</strong><small>Eventos persistidos en Supabase</small></div>
+                <div className="integration-metric integration-metric--success"><span>Registros exitosos</span><strong>{recognizedCount}</strong><small>{utilityRate}% de utilidad del reconocimiento</small></div>
+                <div className="integration-metric integration-metric--failed"><span>Registros rechazados</span><strong>{failedCount}</strong><small>{rejectionRate}% de rechazo</small></div>
+                <div className="integration-metric integration-metric--info"><span>Personas registradas</span><strong>{registeredCount}</strong><small>Perfiles biométricos actuales</small></div>
+              </div>
+              <div className="integration-log">
+                <div className="integration-log-heading">
+                  <div><b>Log reciente de registros</b><span>Se actualiza automáticamente cada 15 segundos</span></div>
+                  <span className={`integration-live-status ${dashboardSyncing ? 'integration-live-status--syncing' : ''}`}><i /> {dashboardSyncing ? 'Sincronizando' : 'En tiempo real'}</span>
+                </div>
+                {integrationRecentEvents.length ? <div className="integration-log-list">{integrationRecentEvents.map((event) => (
+                  <div className="integration-log-row" key={event.id}>
+                    <span className={`integration-log-indicator ${event.success ? 'integration-log-indicator--success' : 'integration-log-indicator--failed'}`}>{event.success ? 'OK' : '!'}</span>
+                    <div><b>{event.success ? 'Registro exitoso' : 'Registro rechazado'}</b><span>{event.message || event.error_code || 'Reconocimiento facial'} · {formatDate(event.created_at)}</span></div>
+                    <strong className={event.success ? '' : 'history-result--failed'}>{event.similarity == null ? '—' : `${Math.round(event.similarity * 100)}%`}</strong>
+                  </div>
+                ))}</div> : <div className="empty-state">No hay registros de reconocimiento en Supabase.</div>}
               </div>
             </div>
 

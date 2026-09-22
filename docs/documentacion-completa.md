@@ -391,6 +391,8 @@ Si Storage no está configurado, el endpoint devuelve
 - actividad por día;
 - eventos recientes;
 - fotografía remota de Storage.
+- métricas operativas de intentos, éxitos, rechazos y porcentaje de utilidad;
+- log reciente sincronizado automáticamente con los eventos del dashboard.
 
 ### Puntos de cámara dentro del dashboard
 
@@ -420,6 +422,11 @@ sin perder sincronización. Después de un reconocimiento, edición o borrado,
 el frontend vuelve a consultar usuarios, estadísticas y auditoría desde
 FastAPI/Supabase para que tarjetas, historial y gráficos representen el mismo
 estado persistido. No se usa el historial local como fuente de métricas.
+
+La pestaña **Integraciones** actualiza el estado cada 15 segundos y permite una
+actualización manual. Muestra el total de intentos del dashboard, registros
+exitosos, registros rechazados, porcentaje de utilidad
+(`reconocidos / intentos * 100`) y los diez eventos más recientes persistidos.
 
 Los documentos cargados por el operador siguen siendo locales de IndexedDB.
 No deben confundirse con los perfiles biométricos ni con la auditoría de

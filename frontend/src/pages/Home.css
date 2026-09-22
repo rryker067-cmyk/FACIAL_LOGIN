@@ -636,7 +636,7 @@
   height: 220px;
   width: 100%;
   overflow: hidden;
-  background-color: #111827;
+  background: linear-gradient(135deg, #172554 0%, #0f766e 52%, #111827 100%);
 }
 
 .tech-series-img img {
@@ -645,6 +645,12 @@
   object-fit: cover;
   opacity: 0.8;
   transition: transform 0.5s ease;
+}
+
+.hero-preview-window .window-content,
+.bento-image-wrapper,
+.bento-image-wrapper-side {
+  background: linear-gradient(135deg, #172554 0%, #0f766e 52%, #111827 100%);
 }
 
 .tech-series-card:hover .tech-series-img img {

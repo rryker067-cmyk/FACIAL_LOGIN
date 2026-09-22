@@ -80,6 +80,7 @@ export default function Home({ onGoToLogin }: HomeProps) {
             <img 
               src="https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=1200&auto=format&fit=crop&q=80" 
               alt="Dashboard Preview" 
+              onError={(event) => { event.currentTarget.style.display = 'none' }}
             />
           </div>
         </div>
@@ -127,6 +128,7 @@ export default function Home({ onGoToLogin }: HomeProps) {
               <img 
                 src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&auto=format&fit=crop&q=80" 
                 alt="Biometría Avanzada" 
+                onError={(event) => { event.currentTarget.style.display = 'none' }}
               />
             </div>
           </div>
@@ -156,6 +158,7 @@ export default function Home({ onGoToLogin }: HomeProps) {
               <img 
                 src="https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=600&auto=format&fit=crop&q=80" 
                 alt="Monitoreo de seguridad" 
+                onError={(event) => { event.currentTarget.style.display = 'none' }}
               />
             </div>
           </div>
@@ -177,6 +180,7 @@ export default function Home({ onGoToLogin }: HomeProps) {
               <img 
                 src="https://images.unsplash.com/photo-1633356122544-f134324a6cee?w=600&auto=format&fit=crop&q=80" 
                 alt="React y TypeScript" 
+                onError={(event) => { event.currentTarget.style.display = 'none' }}
               />
             </div>
             <div className="tech-series-info">
@@ -193,6 +197,7 @@ export default function Home({ onGoToLogin }: HomeProps) {
               <img 
                 src="https://images.unsplash.com/photo-1507238691740-187a5b1d37b8?w=600&auto=format&fit=crop&q=80" 
                 alt="Estilos y Diseño" 
+                onError={(event) => { event.currentTarget.style.display = 'none' }}
               />
             </div>
             <div className="tech-series-info">
@@ -209,6 +214,7 @@ export default function Home({ onGoToLogin }: HomeProps) {
               <img 
                 src="https://images.unsplash.com/photo-1558494949-ef010cbdcc31?w=600&auto=format&fit=crop&q=80" 
                 alt="Base de datos local" 
+                onError={(event) => { event.currentTarget.style.display = 'none' }}
               />
             </div>
             <div className="tech-series-info">
@@ -225,6 +231,7 @@ export default function Home({ onGoToLogin }: HomeProps) {
               <img 
                 src="https://images.unsplash.com/photo-1618401471353-b98aedd04e11?w=600&auto=format&fit=crop&q=80" 
                 alt="Despliegue y Build" 
+                onError={(event) => { event.currentTarget.style.display = 'none' }}
               />
             </div>
             <div className="tech-series-info">

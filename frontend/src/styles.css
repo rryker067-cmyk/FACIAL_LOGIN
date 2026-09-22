@@ -329,6 +329,9 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
 .document-confirm-dialog .button--danger:hover:not(:disabled) { border-color: #dfa9a9; background: #fff0f0; }
 .person-photo { display: grid; place-items: center; flex: 0 0 auto; width: 38px; height: 38px; overflow: hidden; border-radius: 10px; color: var(--accent-strong); background: linear-gradient(135deg, #eaf4ff 0%, #dfeeff 100%); font-size: 10px; font-weight: 800; }
 .person-photo img { width: 100%; height: 100%; object-fit: cover; }
+.person-photo--fallback { display: grid; place-items: center; color: var(--accent-strong); background: linear-gradient(135deg, #eaf4ff 0%, #dfeeff 100%); }
+.person-photo--fallback::after { content: '—'; font-weight: 800; }
+.document-preview--fallback { min-height: 220px; display: grid; place-items: center; padding: 18px; border: 1px dashed rgba(148, 163, 184, 0.45); border-radius: 10px; color: #cbd5e1; text-align: center; background: linear-gradient(135deg, rgba(23, 37, 84, 0.8), rgba(15, 118, 110, 0.45)); }
 .person-photo--large { width: 54px; height: 54px; border-radius: 14px; }
 .person-card > div:nth-child(2), .integration-list span { flex: 1; display: grid; gap: 4px; }
 .person-card > svg { color: #2c9363; }

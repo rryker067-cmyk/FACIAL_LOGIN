@@ -164,6 +164,8 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
   const streamRef = useRef<MediaStream | null>(null)
   const verifyVideoRef = useRef<HTMLVideoElement>(null)
   const verifyStreamRef = useRef<MediaStream | null>(null)
+  const liveScanTimerRef = useRef<number | null>(null)
+  const liveScanInFlightRef = useRef(false)
 
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {
@@ -404,6 +406,11 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
   }
 
   const closeCamera = () => {
+    if (liveScanTimerRef.current !== null) {
+      window.clearInterval(liveScanTimerRef.current)
+      liveScanTimerRef.current = null
+    }
+    liveScanInFlightRef.current = false
     streamRef.current?.getTracks().forEach((track) => track.stop())
     streamRef.current = null
     if (videoRef.current) {
@@ -412,34 +419,26 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     setIsCameraOpen(false)
   }
 
-  const capturePhoto = () => {
+  const captureVideoFrame = (): string | null => {
     const video = videoRef.current
     if (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || !video.videoWidth || !video.videoHeight) {
-      setRecognitionError('La cámara todavía no está lista. Espera a que aparezca la imagen e inténtalo de nuevo.')
-      return
+      return null
     }
     const canvas = document.createElement('canvas')
     canvas.width = video.videoWidth || 640
     canvas.height = video.videoHeight || 480
     const context = canvas.getContext('2d')
-    if (!context) {
-      setRecognitionError('No se pudo preparar la captura de la cámara.')
-      return
-    }
+    if (!context) return null
     context.save()
     context.translate(canvas.width, 0)
     context.scale(-1, 1)
     context.drawImage(video, 0, 0, canvas.width, canvas.height)
     context.restore()
-    const image = canvas.toDataURL('image/jpeg', 0.9)
-    setPreview(image)
-    closeCamera()
-    // El backend compara el embedding de esta captura contra los embeddings de Supabase.
-    void recognizeFaceFromImage(image)
+    return canvas.toDataURL('image/jpeg', 0.9)
   }
 
-  // Envía la captura de cámara al análisis facial configurado en FastAPI.
-  const recognizeFaceFromImage = async (image = preview) => {
+  // Envía un frame temporal del video al análisis facial configurado en FastAPI.
+  const recognizeFaceFromImage = async (image: string) => {
     if (!image) return
     setIsRecognizing(true)
     setRecognitionError(null)
@@ -462,7 +461,6 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
       const isAcceptedMatch = Boolean(result.nombre) && match >= 75
       setRecognitionNotice(isAcceptedMatch ? null : 'No se encontró al usuario en la base de datos.')
       setForm((current) => ({ ...current, estado: isAcceptedMatch ? 'Reconocido' : 'No reconocido' }))
-      if (isAcceptedMatch && result.imagen_url) setPreview(result.imagen_url)
       setFaceMatch(isAcceptedMatch ? match : 0)
       setRegistrationConfidence(isAcceptedMatch ? Math.round(match) : 0)
       try {
@@ -476,6 +474,33 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
       setIsRecognizing(false)
     }
   }
+
+  useEffect(() => {
+    if (!isCameraOpen) return
+
+    const scanLiveFrame = async () => {
+      if (liveScanInFlightRef.current || isRecognizing) return
+      const frame = captureVideoFrame()
+      if (!frame) return
+      liveScanInFlightRef.current = true
+      try {
+        await recognizeFaceFromImage(frame)
+      } finally {
+        liveScanInFlightRef.current = false
+      }
+    }
+
+    const firstScanTimer = window.setTimeout(() => void scanLiveFrame(), 900)
+    liveScanTimerRef.current = window.setInterval(() => void scanLiveFrame(), 3500)
+    return () => {
+      window.clearTimeout(firstScanTimer)
+      if (liveScanTimerRef.current !== null) {
+        window.clearInterval(liveScanTimerRef.current)
+        liveScanTimerRef.current = null
+      }
+      liveScanInFlightRef.current = false
+    }
+  }, [isCameraOpen])
 
   const saveRecord = (event: FormEvent) => {
     event.preventDefault()
@@ -753,7 +778,10 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
             </div>
 
             <div className="panel details-panel"><div className="panel-heading"><div><span className="section-kicker">PASO 02</span><h2>Datos personales</h2></div><span className="match-badge"><span /> Coincidencia lista</span></div>
-              <button className="recognize-button" onClick={() => { if (!isCameraOpen) { void openCamera(); return } capturePhoto() }} disabled={isRecognizing}>{isRecognizing ? <><span className="spinner" /> Analizando video...</> : <><ScanFace size={18} /> Escanear rostro en vivo</>}</button>
+              <div className={`recognition-live-status ${isCameraOpen ? 'is-active' : ''}`} role="status">
+                <ScanFace size={18} />
+                {isCameraOpen ? (isRecognizing ? 'Analizando el video en vivo...' : 'Análisis automático activo') : 'Activa la cámara para comenzar el análisis'}
+              </div>
               {recognitionError && <p className="recognition-error" role="alert">{recognitionError}</p>}
               <form onSubmit={saveRecord}><div className="form-grid"><Field label="Nombre" value={form.nombre} onChange={(value) => updateField('nombre', value)} placeholder="Ej. Valentina" /><Field label="Estado" value={form.estado || 'Pendiente'} onChange={() => undefined} placeholder="Pendiente" /><Field label="Edad" value={form.edad} onChange={(value) => updateField('edad', value)} placeholder="Años" type="number" /><Field label="DNI" value={form.dni} onChange={(value) => updateField('dni', value)} placeholder="8 dígitos" /><Field wide label="Correo electrónico" value={form.email || ''} onChange={(value) => updateField('email', value)} placeholder="correo@empresa.com" /><Field wide label="Número de teléfono" value={form.telefono} onChange={(value) => updateField('telefono', value)} placeholder="+51 000 000 000" /></div><div className="form-footer"><span className="required-note">* Campos requeridos</span><button type="submit" className="button button--primary" disabled={!form.nombre || !form.dni}>{isSaved ? <><Check size={16} /> Guardado</> : <><Database size={16} /> Guardar registro</>}</button></div></form>
             </div>

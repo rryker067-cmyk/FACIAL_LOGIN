@@ -400,12 +400,13 @@ El dashboard tiene dos puntos de captura independientes:
 
 1. **Reconocer rostro:** `openCamera` solicita `getUserMedia` y asigna el
    `MediaStream` al video de reconocimiento. El usuario no sube archivos ni
-   toma una fotografía manual: al pulsar `Escanear rostro en vivo`, el cliente
-   obtiene internamente un frame temporal del video y lo envía a
+   pulsa un botón de captura: al activar la cámara, el cliente obtiene frames
+   temporales del video cada 3.5 segundos y los envía a
    `POST /api/v1/face-recognition/recognize`. FastAPI valida calidad, detecta
    el rostro, consulta `match_face_1n` y registra un evento con
-   `source = 'dashboard'`. El frame técnico no se presenta como una foto de
-   entrada ni se usa como sustituto del perfil almacenado.
+   `source = 'dashboard'`. El video permanece montado y el frame técnico no se
+   presenta como una foto de entrada ni se usa como sustituto del perfil
+   almacenado.
 2. **Editar o eliminar una persona:** `startVerifyCamera` abre una cámara
    exclusiva para la verificación del perfil seleccionado. `verifySelectedUser`
    captura el frame y llama a `POST /api/v1/users/{id}/verify-face`. Solo si

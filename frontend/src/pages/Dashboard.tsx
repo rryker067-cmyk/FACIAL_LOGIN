@@ -185,6 +185,13 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     verifyStreamRef.current?.getTracks().forEach((track) => track.stop())
   }, [])
 
+  useEffect(() => {
+    if (verifyCameraOpen && verifyVideoRef.current && verifyStreamRef.current) {
+      verifyVideoRef.current.srcObject = verifyStreamRef.current
+      void verifyVideoRef.current.play().catch(() => undefined)
+    }
+  }, [verifyCameraOpen])
+
   const applyDashboardData = (users: Array<PersonRecord & { id: string; email?: string; imagen_url?: string }>, stats: DashboardStats, events: AuditEvent[]) => {
     setRegisteredUsers(users.map((registeredUser) => ({
       ...registeredUser,
@@ -242,12 +249,6 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: 'user' } })
       verifyStreamRef.current = stream
       setVerifyCameraOpen(true)
-      window.setTimeout(() => {
-        if (verifyVideoRef.current) {
-          verifyVideoRef.current.srcObject = stream
-          void verifyVideoRef.current.play().catch(() => undefined)
-        }
-      }, 0)
     } catch {
       setVerifyError('No se pudo acceder a la cámara para confirmar la identidad.')
       closeVerifyCamera()

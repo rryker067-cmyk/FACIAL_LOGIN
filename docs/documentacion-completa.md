@@ -409,6 +409,11 @@ El dashboard tiene dos puntos de captura independientes:
    auditoría, pero no se mezclan con las métricas de reconocimientos del
    dashboard.
 
+La verificación de un perfil reutiliza la RPC desplegada `match_face_1n` con
+umbral `0.75` y comprueba que el ID del mejor resultado sea exactamente el del
+perfil seleccionado. No depende de una RPC separada
+`match_face_for_user`, que no forma parte de la migración oficial.
+
 Al cerrar cualquiera de las cámaras se detienen todas sus pistas y se limpia
 `video.srcObject`; esto evita streams duplicados y permite reabrir la cámara
 sin perder sincronización. Después de un reconocimiento, edición o borrado,

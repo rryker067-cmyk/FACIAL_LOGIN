@@ -143,21 +143,27 @@ class UserRepository:
 
     @staticmethod
     async def find_face_match_for_user(user_id: str, query_embedding: list[float]) -> dict | None:
-        """Compare against only the requested profile, never another user."""
+        """Verify the requested profile using the deployed 1:N RPC.
+
+        The schema exposes match_face_1n, not match_face_for_user. We therefore
+        require the best threshold-qualified match to be the selected profile.
+        """
         if supabase is None:
             raise HTTPException(status_code=503, detail={"error": "SUPABASE_NOT_CONFIGURED"})
         try:
             response = supabase.rpc(
-                "match_face_for_user",
+                "match_face_1n",
                 {
                     "query_embedding": query_embedding,
                     "match_threshold": 0.75,
-                    "target_user_id": str(user_id),
                 },
             ).execute()
             if not response.data:
                 return None
             candidate = response.data[0]
+            candidate_id = candidate.get("id") or candidate.get("user_id")
+            if str(candidate_id) != str(user_id):
+                return None
             user = await UserRepository.get_user_by_id(user_id)
             return {**(user or {}), **candidate, "similarity": float(candidate.get("similarity", 0))}
         except Exception as err:

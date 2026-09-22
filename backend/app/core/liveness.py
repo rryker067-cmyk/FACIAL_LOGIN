@@ -9,7 +9,10 @@ class LightweightLiveness:
     MAX_DIMENSION = 4096
     MAX_PIXELS = 16_000_000
     MIN_MOTION_SCORE = 0.015
-    MIN_TEXTURE_SCORE = 0.08
+    # Canny edge density varies significantly with skin tone, lighting and
+    # JPEG compression. Keep this as a weak replay signal, not a hard quality
+    # requirement for normal camera frames.
+    MIN_TEXTURE_SCORE = 0.02
 
     @staticmethod
     def verify_quality_and_liveness(base64_image: str, blur_threshold: float = 60.0) -> np.ndarray:
@@ -120,10 +123,13 @@ class LightweightLiveness:
         for gray in gray_frames:
             edges = cv2.Canny(gray, 80, 160)
             texture_scores.append(float(np.count_nonzero(edges) / edges.size))
-        if min(texture_scores) < LightweightLiveness.MIN_TEXTURE_SCORE:
+        if min(texture_scores) < LightweightLiveness.MIN_TEXTURE_SCORE and max(motion_scores) < 0.08:
             raise HTTPException(
                 status_code=422,
-                detail={"error": "POSSIBLE_REPLAY", "message": "La textura de la captura no parece provenir de una cámara activa."},
+                detail={
+                    "error": "POSSIBLE_REPLAY",
+                    "message": "La captura tiene poca textura y movimiento insuficiente. Mantenga el rostro visible y mueva ligeramente la cabeza.",
+                },
             )
 
         return frames[1], {

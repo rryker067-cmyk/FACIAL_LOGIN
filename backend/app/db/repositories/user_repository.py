@@ -115,7 +115,10 @@ class UserRepository:
             if _is_missing_recognition_events(err):
                 logger.warning("Auditoría no disponible: falta public.recognition_events en Supabase.")
             else:
-                logger.exception("No se pudo persistir el evento de auditoría")
+                logger.exception(
+                    "No se pudo persistir el evento de auditoría. "
+                    "Compruebe que ejecutó supabase/recognition_events.sql y que RLS permite insertar."
+                )
 
     @staticmethod
     async def list_auth_events(limit: int = 100, user_id: str | None = None) -> list[dict[str, Any]]:
@@ -304,6 +307,7 @@ class UserRepository:
         avatar_url: str,
         image_urls: list[str],
         embeddings: list[list[float]],
+        registration_metadata: dict[str, Any] | None = None,
     ) -> dict:
         try:
             if len(embedding) != 512:
@@ -321,6 +325,7 @@ class UserRepository:
                 "imagenes_urls": image_urls,
                 "face_embedding": embedding,
                 "face_embeddings": embeddings,
+                "face_registration_metadata": registration_metadata or {},
             }
 
             if supabase is None:

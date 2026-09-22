@@ -159,8 +159,11 @@ async def register_user(payload: UserRegisterRequest):
         )
 
     embeddings: list[list[float]] = []
+    liveness_metadata: dict[str, float] = {}
     try:
-        await run_in_threadpool(LightweightLiveness.verify_sequence, payload.imagenes_base64)
+        _, liveness_metadata = await run_in_threadpool(
+            LightweightLiveness.verify_sequence, payload.imagenes_base64
+        )
         for image in payload.imagenes_base64:
             cv2_img = await run_in_threadpool(
                 LightweightLiveness.verify_quality_and_liveness, image
@@ -175,7 +178,10 @@ async def register_user(payload: UserRegisterRequest):
             source="users/register",
             error_code=str(detail.get("error", "FACE_PROCESSING_ERROR")),
             message=str(detail.get("message", "No se pudo validar el registro facial.")),
-            metadata={"image_index": detail["image_index"]} if "image_index" in detail else None,
+            metadata={
+                "image_index": detail["image_index"],
+                "liveness": liveness_metadata,
+            } if "image_index" in detail else {"liveness": liveness_metadata},
         )
         raise
     except Exception as err:
@@ -203,7 +209,11 @@ async def register_user(payload: UserRegisterRequest):
             source="users/register",
             error_code="FACE_SAMPLES_INCONSISTENT",
             message="Las capturas no son suficientemente consistentes.",
-            metadata={"consistency_score": round(consistency_score, 4)},
+            metadata={
+                "consistency_score": round(consistency_score, 4),
+                "sample_count": len(embeddings),
+                "liveness": liveness_metadata,
+            },
         )
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -270,6 +280,13 @@ async def register_user(payload: UserRegisterRequest):
         avatar_url=image_urls[0],
         image_urls=image_urls,
         embeddings=embeddings,
+        registration_metadata={
+            "sample_count": len(embeddings),
+            "validation_score": round(consistency_score * 100, 2),
+            "consistency_score": round(consistency_score, 5),
+            "liveness": liveness_metadata,
+            "embedding_dimension": len(embedding),
+        },
     )
 
     response = _user_response(user)
@@ -278,10 +295,14 @@ async def register_user(payload: UserRegisterRequest):
         user_id=str(user["id"]),
         success=True,
         source="users/register",
+        similarity=consistency_score,
         message="Registro facial creado correctamente.",
         metadata={
             "sample_count": len(embeddings),
             "validation_score": round(consistency_score * 100, 2),
+            "consistency_score": round(consistency_score, 5),
+            "liveness": liveness_metadata,
+            "embedding_dimension": len(embedding),
         },
     )
     return response.model_copy(update={

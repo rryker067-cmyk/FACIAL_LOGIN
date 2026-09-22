@@ -265,21 +265,6 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
     };
 
     try {
-      try {
-        const existingMatch = await loginWithFace(registrationImages);
-        const existingSimilarity = Number.parseFloat(existingMatch.match_percentage) || 0;
-        if (existingSimilarity >= 75) {
-          setDuplicateNotice(true);
-          setStatus('error');
-          setMessage('Este rostro ya está registrado. Inicie sesión.');
-          return;
-        }
-      } catch (error: any) {
-        if (error?.status !== 401 && error?.code !== 'FACE_NOT_RECOGNIZED') {
-          throw error;
-        }
-      }
-
       const response = await registerUserWithFace({
         nombre: registerName.trim().split(' ')[0] || registerName.trim(),
         apellido: registerName.trim().split(' ').slice(1).join(' ') || 'Registrado',

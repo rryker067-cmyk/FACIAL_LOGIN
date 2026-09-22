@@ -32,15 +32,31 @@ create index if not exists recognition_events_created_at_idx
 create index if not exists recognition_events_user_id_idx
     on public.recognition_events (user_id);
 
--- El backend usa la clave de servicio; estas politicas dejan la tabla protegida
--- si en el futuro se consulta directamente desde el navegador.
+-- El backend consulta Supabase mediante FastAPI y la tabla mantiene RLS activo.
 alter table public.recognition_events enable row level security;
+
+-- El backend actual usa SUPABASE_KEY para insertar y consultar mediante FastAPI.
+-- Estas políticas evitan que RLS descarte silenciosamente los eventos.
+drop policy if exists recognition_events_backend_insert on public.recognition_events;
+create policy recognition_events_backend_insert
+    on public.recognition_events
+    for insert
+    to anon, authenticated
+    with check (true);
+
+drop policy if exists recognition_events_backend_select on public.recognition_events;
+create policy recognition_events_backend_select
+    on public.recognition_events
+    for select
+    to anon, authenticated
+    using (true);
 
 notify pgrst, 'reload schema';
 
 alter table public.usuarios
     add column if not exists imagenes_urls jsonb not null default '[]'::jsonb,
-    add column if not exists face_embeddings jsonb not null default '[]'::jsonb;
+    add column if not exists face_embeddings jsonb not null default '[]'::jsonb,
+    add column if not exists face_registration_metadata jsonb not null default '{}'::jsonb;
 
 create unique index if not exists usuarios_email_normalized_unique_idx
     on public.usuarios (lower(trim(email)))

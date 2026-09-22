@@ -28,6 +28,13 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    @field_validator("JWT_SECRET")
+    @classmethod
+    def validate_jwt_secret(cls, value: str) -> str:
+        if len(value) < 32 or value == "development-secret-key":
+            raise ValueError("JWT_SECRET debe ser una clave secreta de al menos 32 caracteres.")
+        return value
+
     @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod
     def assemble_cors_origins(cls, v: Union[str, list[str], None]) -> list[str]:

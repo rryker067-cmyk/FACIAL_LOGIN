@@ -18,33 +18,32 @@ async function requestJson<T>(endpoint: string, body?: Record<string, unknown>, 
     const error = await response.json().catch(() => ({}))
     const detail = error?.detail
     const apiError = new Error(
-      typeof detail === 'string'
-        ? detail
-        : detail?.message ?? 'No se pudo completar la solicitud al backend',
+      typeof detail === 'string' ? detail : detail?.message ?? 'No se pudo completar la solicitud al backend',
     ) as Error & { code?: string; status?: number }
     apiError.code = typeof detail === 'object' ? detail?.error : undefined
     apiError.status = response.status
+    if (response.status === 401 && apiError.code === 'TOKEN_EXPIRED') {
+      localStorage.removeItem('veris_access_token')
+      localStorage.removeItem('veris_session')
+    }
     throw apiError
   }
 
   return response.json() as Promise<T>
 }
 
-export async function recognizeFace(image: string): Promise<PersonRecord> {
-  const result = await requestJson<Record<string, string | number>>('/api/v1/face-recognition/recognize', { image })
-  return {
-    ...emptyPerson,
-    ...Object.fromEntries(Object.entries(result).map(([key, value]) => [key, String(value)])),
-  }
-}
-
-export async function listUsers(): Promise<Array<PersonRecord & { id: string; email?: string; imagen_url?: string }>> {
-  return requestJson('/api/v1/users', undefined, 'GET')
-}
-
 const authHeaders = (): Record<string, string> => {
   const token = localStorage.getItem('veris_access_token')
   return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
+export async function recognizeFace(image: string): Promise<PersonRecord> {
+  const result = await requestJson<Record<string, string | number>>('/api/v1/face-recognition/recognize', { image }, 'POST', authHeaders())
+  return { ...emptyPerson, ...Object.fromEntries(Object.entries(result).map(([key, value]) => [key, String(value)])) }
+}
+
+export async function listUsers(): Promise<Array<PersonRecord & { id: string; email?: string; imagen_url?: string }>> {
+  return requestJson('/api/v1/users', undefined, 'GET', authHeaders())
 }
 
 export type AuditEvent = {
@@ -69,17 +68,11 @@ export async function verifyUserFace(userId: string, imagen_base64: string): Pro
 }
 
 export async function updateUser(userId: string, data: Record<string, unknown>, verificationToken: string): Promise<Record<string, unknown>> {
-  return requestJson(`/api/v1/users/${userId}`, data, 'PATCH', {
-    ...authHeaders(),
-    'X-Face-Verification-Token': verificationToken,
-  })
+  return requestJson(`/api/v1/users/${userId}`, data, 'PATCH', { ...authHeaders(), 'X-Face-Verification-Token': verificationToken })
 }
 
 export async function deleteUser(userId: string, verificationToken: string): Promise<void> {
-  await requestJson(`/api/v1/users/${userId}`, undefined, 'DELETE', {
-    ...authHeaders(),
-    'X-Face-Verification-Token': verificationToken,
-  })
+  await requestJson(`/api/v1/users/${userId}`, undefined, 'DELETE', { ...authHeaders(), 'X-Face-Verification-Token': verificationToken })
 }
 
 export type DashboardStats = {
@@ -89,21 +82,14 @@ export type DashboardStats = {
   unrecognized_count: number
   recognition_rate: number
   activity_by_day: Record<string, number>
-  recent_events: Array<{
-    id: string
-    user_id?: string | null
-    similarity: number
-    recognized: boolean
-    source: string
-    created_at: string
-  }>
+  recent_events: Array<{ id: string; user_id?: string | null; similarity: number; recognized: boolean; source: string; created_at: string }>
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
-  return requestJson('/api/v1/dashboard/stats', undefined, 'GET')
+  return requestJson('/api/v1/dashboard/stats', undefined, 'GET', authHeaders())
 }
 
-export async function loginWithFace(image: string): Promise<{
+export async function loginWithFace(images: string[]): Promise<{
   access_token: string
   user_id: string
   nombre: string
@@ -113,7 +99,7 @@ export async function loginWithFace(image: string): Promise<{
   edad?: number | null
   telefono?: string | null
 }> {
-  return requestJson('/api/v1/auth/login-face', { imagen_base64: image })
+  return requestJson('/api/v1/auth/login-face', { imagenes_base64: images })
 }
 
 export async function loginWithCredentials(email: string, password: string): Promise<{

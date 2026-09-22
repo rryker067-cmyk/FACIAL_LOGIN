@@ -1,11 +1,12 @@
 from backend.app.api.v1 import auth
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.concurrency import run_in_threadpool
 
 from backend.app.api.v1 import users
 from backend.app.core.face_embedder import face_embedder
 from backend.app.core.liveness import LightweightLiveness
 from backend.app.db.repositories.user_repository import UserRepository
+from backend.app.core.security import get_authenticated_user
 from backend.app.schemas.user import FaceRecognitionRequest
 
 api_router = APIRouter()
@@ -14,7 +15,10 @@ api_router.include_router(users.router)
 
 
 @api_router.post("/face-recognition/recognize")
-async def recognize_face(payload: FaceRecognitionRequest):
+async def recognize_face(
+    payload: FaceRecognitionRequest,
+    authenticated_user: dict = Depends(get_authenticated_user),
+):
     try:
         image = payload.image
         if not image:
@@ -69,5 +73,5 @@ async def recognize_face(payload: FaceRecognitionRequest):
 
 
 @api_router.get("/dashboard/stats")
-async def dashboard_stats():
+async def dashboard_stats(authenticated_user: dict = Depends(get_authenticated_user)):
     return await UserRepository.get_dashboard_stats()

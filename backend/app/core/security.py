@@ -1,13 +1,14 @@
 from datetime import datetime, timedelta, timezone
 from jose import jwt
-from fastapi import Depends
+from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.concurrency import run_in_threadpool
 from backend.app.config import settings
 from typing import Any
 from backend.app.db.supabase_client import supabase
+from jose.exceptions import ExpiredSignatureError, JWTError
 
-bearer_scheme = HTTPBearer(auto_error=True)
+bearer_scheme = HTTPBearer(auto_error=False)
 
 def create_access_token(data: dict) -> str:
     to_encode = data.copy()
@@ -34,22 +35,33 @@ def create_face_verification_token(user_id: str) -> str:
 
 def decode_access_token(token: str) -> dict[str, Any]:
     """Decode tokens issued by this API and raise a uniform authentication error."""
-    from fastapi import HTTPException, status
-
     try:
         return jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
-    except Exception as err:
+    except ExpiredSignatureError as err:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"error": "INVALID_ACCESS_TOKEN", "message": "El token de acceso no es válido."},
+            detail={"error": "TOKEN_EXPIRED", "message": "El token de acceso ha expirado."},
+            headers={"WWW-Authenticate": "Bearer error=\"invalid_token\", error_description=\"expired\""},
+        ) from err
+    except JWTError as err:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"error": "TOKEN_INVALID", "message": "El token de acceso no es válido."},
             headers={"WWW-Authenticate": "Bearer"},
         ) from err
 
 
 async def get_authenticated_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ) -> dict[str, Any]:
     """Resolve either an API JWT (facial login) or a Supabase Auth JWT."""
+    if credentials is None or not credentials.credentials.strip():
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"error": "TOKEN_MISSING", "message": "Se requiere un token de autenticación."},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     token = credentials.credentials
     try:
         claims = decode_access_token(token)
@@ -59,8 +71,9 @@ async def get_authenticated_user(
                 "nombre": str(claims.get("name") or "Usuario"),
                 "role": str(claims.get("role") or "Usuario"),
             }
-    except Exception:
-        pass
+    except HTTPException as own_token_error:
+        if own_token_error.detail.get("error") == "TOKEN_EXPIRED":
+            raise
 
     if supabase is not None:
         try:
@@ -79,12 +92,11 @@ async def get_authenticated_user(
                     "role": str(metadata.get("role") or "Usuario"),
                 }
         except Exception:
+            # Supabase tokens use a different signing key and must be checked by Supabase.
             pass
-
-    from fastapi import HTTPException, status
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail={"error": "INVALID_ACCESS_TOKEN", "message": "El token de acceso no es válido."},
+        detail={"error": "TOKEN_INVALID", "message": "El token de acceso no es válido."},
         headers={"WWW-Authenticate": "Bearer"},
     )

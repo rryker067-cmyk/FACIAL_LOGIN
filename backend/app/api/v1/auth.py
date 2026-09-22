@@ -102,8 +102,8 @@ async def authenticated_user(request: Request):
 @router.post("/login-face", response_model=TokenResponse)
 async def login_face_1n(payload: LoginFaceRequest):
     try:
-        cv2_img = await run_in_threadpool(
-            LightweightLiveness.verify_quality_and_liveness, payload.imagen_base64
+        cv2_img, liveness_metadata = await run_in_threadpool(
+            LightweightLiveness.verify_sequence, payload.imagenes_base64
         )
         incoming_embedding = await run_in_threadpool(face_embedder.extract_embedding, cv2_img)
         match = await UserRepository.find_best_face_match(
@@ -144,6 +144,7 @@ async def login_face_1n(payload: LoginFaceRequest):
         event_type="face_login", user_id=str(match["id"]),
         similarity=float(match["similarity"]), success=True,
         source="auth/login-face", message="Inicio de sesión correcto.",
+        metadata={"liveness": liveness_metadata},
     )
     
     # 4. Generación de Session Token

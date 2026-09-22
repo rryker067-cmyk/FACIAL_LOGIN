@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 
 class LoginFaceRequest(BaseModel):
-    imagen_base64: str = Field(..., description="String Base64 capturado desde React/Webcam")
+    imagenes_base64: list[str] = Field(..., min_length=3, max_length=3, description="Tres capturas consecutivas de la cámara")
 
 
 class AuditEventResponse(BaseModel):

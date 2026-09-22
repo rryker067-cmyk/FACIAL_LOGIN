@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class UserRegisterRequest(BaseModel):
@@ -10,13 +10,23 @@ class UserRegisterRequest(BaseModel):
     dni: str | None = Field(default=None, description="Documento de identidad opcional del usuario")
     imagenes_base64: list[str] = Field(..., min_length=3, max_length=3)
 
+    @field_validator("imagenes_base64")
+    @classmethod
+    def validate_image_payloads(cls, images: list[str]) -> list[str]:
+        max_encoded_length = 7_000_000
+        if any(len(image) > max_encoded_length for image in images):
+            raise ValueError("Cada imagen supera el tamaño máximo permitido.")
+        if sum(len(image) for image in images) > max_encoded_length * 3:
+            raise ValueError("El tamaño total de las imágenes supera el límite permitido.")
+        return images
+
 
 class FaceRecognitionRequest(BaseModel):
-    image: str = Field(..., description="Imagen en base64 o data URL")
+    image: str = Field(..., max_length=7_000_000, description="Imagen en base64 o data URL")
 
 
 class FaceVerificationRequest(BaseModel):
-    imagen_base64: str = Field(..., description="Fotografía capturada desde la cámara")
+    imagen_base64: str = Field(..., max_length=7_000_000, description="Fotografía capturada desde la cámara")
 
 
 class UserUpdateRequest(BaseModel):

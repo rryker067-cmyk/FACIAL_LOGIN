@@ -42,4 +42,12 @@ alter table public.usuarios
     add column if not exists imagenes_urls jsonb not null default '[]'::jsonb,
     add column if not exists face_embeddings jsonb not null default '[]'::jsonb;
 
+create unique index if not exists usuarios_email_normalized_unique_idx
+    on public.usuarios (lower(trim(email)))
+    where email is not null and trim(email) <> '';
+
+create unique index if not exists usuarios_dni_unique_idx
+    on public.usuarios (trim(dni))
+    where dni is not null and trim(dni) <> '';
+
 notify pgrst, 'reload schema';

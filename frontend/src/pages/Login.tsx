@@ -57,16 +57,8 @@ export default function Login({ onLoginSuccess, onBackToHome }: LoginProps) {
     setError('');
     try {
       setIsLoading(true);
-      const googleAccount = await promptGoogleAccountSelection();
-      
-      const userData = { 
-        name: googleAccount.name, 
-        role: 'Operador Google Workspace' 
-      };
-
-      localStorage.setItem('veris_session', JSON.stringify(userData));
-      setIsLoading(false);
-      onLoginSuccess(userData);
+      await promptGoogleAccountSelection();
+      throw new Error('El inicio de sesión de Google aún no está conectado al backend. Use correo y contraseña.');
     } catch (err: any) {
       setIsLoading(false);
       if (err.message && !err.message.includes('cancelado')) {

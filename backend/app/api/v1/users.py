@@ -21,7 +21,7 @@ router = APIRouter(prefix="/users", tags=["Gestión de Usuarios"])
 
 
 @router.get("")
-async def list_users():
+async def list_users(authenticated_user: dict = Depends(get_authenticated_user)):
     return await UserRepository.list_users()
 
 
@@ -40,6 +40,7 @@ async def verify_face_before_mutation(
     authenticated_user: dict = Depends(get_authenticated_user),
 ):
     """Issue a short-lived mutation grant after matching the signed-in user's face."""
+    _require_same_user_or_admin(user_id, authenticated_user)
     if not payload.imagen_base64.startswith("data:image/"):
         raise HTTPException(status_code=422, detail={"error": "CAMERA_IMAGE_REQUIRED"})
 
@@ -107,6 +108,7 @@ async def delete_user(
 def _require_mutation_grant(
     user_id: str, authenticated_user: dict, verification_token: str | None
 ) -> None:
+    _require_same_user_or_admin(user_id, authenticated_user)
     if not verification_token:
         raise HTTPException(status_code=403, detail={"error": "FACE_VERIFICATION_REQUIRED"})
     try:
@@ -120,6 +122,13 @@ def _require_mutation_grant(
         if isinstance(err, HTTPException):
             raise
         raise HTTPException(status_code=403, detail={"error": "INVALID_FACE_VERIFICATION"}) from err
+
+
+def _require_same_user_or_admin(user_id: str, authenticated_user: dict) -> None:
+    if str(authenticated_user.get("user_id")) != str(user_id) and authenticated_user.get("role", "").lower() not in {
+        "admin", "administrador", "service_role"
+    }:
+        raise HTTPException(status_code=403, detail={"error": "FORBIDDEN", "message": "No puede operar sobre otro usuario."})
 
 
 def _user_response(user: dict) -> UserResponse:
@@ -150,6 +159,7 @@ async def register_user(payload: UserRegisterRequest):
         )
 
     embeddings: list[list[float]] = []
+    await run_in_threadpool(LightweightLiveness.verify_sequence, payload.imagenes_base64)
     for image in payload.imagenes_base64:
         cv2_img = await run_in_threadpool(
             LightweightLiveness.verify_quality_and_liveness, image
@@ -188,9 +198,11 @@ async def register_user(payload: UserRegisterRequest):
             },
         )
 
+    normalized_email = payload.email.strip().lower() if payload.email else None
+    normalized_dni = payload.dni.strip() if payload.dni else None
     existing_identity = await UserRepository.find_by_identity(
-        email=payload.email,
-        dni=payload.dni,
+        email=normalized_email,
+        dni=normalized_dni,
     )
     if existing_identity:
         raise HTTPException(
@@ -203,8 +215,10 @@ async def register_user(payload: UserRegisterRequest):
 
     image_urls = [await UserRepository.upload_avatar(image) for image in payload.imagenes_base64]
 
+    registration_data = payload.model_dump()
+    registration_data.update(email=normalized_email, dni=normalized_dni)
     user = await UserRepository.create_user(
-        data=payload.model_dump(),
+        data=registration_data,
         embedding=embedding,
         avatar_url=image_urls[0],
         image_urls=image_urls,

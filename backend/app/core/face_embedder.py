@@ -50,7 +50,15 @@ class FaceEmbedder:
             minSize=(60, 60),
         )
         if len(faces) == 0:
-            return image
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"error": "FACE_NOT_DETECTED", "message": "No se detectó ningún rostro en la imagen."},
+            )
+        if len(faces) > 1:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"error": "MULTIPLE_FACES_DETECTED", "message": "La imagen debe contener un solo rostro."},
+            )
 
         x, y, width, height = max(faces, key=lambda box: box[2] * box[3])
         margin_x = int(width * 0.25)
@@ -121,6 +129,8 @@ class FaceEmbedder:
             normalized_embedding = (raw_embedding / norm).tolist()
             return normalized_embedding
 
+        except HTTPException:
+            raise
         except Exception as err:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

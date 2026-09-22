@@ -334,11 +334,18 @@ class UserRepository:
                 raise RuntimeError("Supabase no devolvió el registro insertado.")
             return response.data[0]
         except Exception as err:
+            if isinstance(err, HTTPException):
+                raise err
             logger.exception("Error insertando usuario en la tabla usuarios de Supabase")
+            if "duplicate key" in str(err).lower() or "unique constraint" in str(err).lower():
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={"error": "USER_ALREADY_REGISTERED", "message": "El correo o DNI ya está registrado."},
+                ) from err
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Error de inserción en base de datos: {str(err)}"
-            )
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={"error": "USER_CREATION_FAILED", "message": "No se pudo crear el usuario."},
+            ) from err
 
     @staticmethod
     async def find_best_face_match(query_embedding: list[float], threshold: float = 0.75) -> dict | None:

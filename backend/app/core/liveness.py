@@ -1,9 +1,16 @@
 import base64
+import binascii
 import cv2
 import numpy as np
 from fastapi import HTTPException, status
 
 class LightweightLiveness:
+    MAX_DECODED_BYTES = 5 * 1024 * 1024
+    MAX_DIMENSION = 4096
+    MAX_PIXELS = 16_000_000
+    MIN_MOTION_SCORE = 0.015
+    MIN_TEXTURE_SCORE = 0.08
+
     @staticmethod
     def verify_quality_and_liveness(base64_image: str, blur_threshold: float = 60.0) -> np.ndarray:
         """
@@ -12,12 +19,26 @@ class LightweightLiveness:
         """
         try:
             # 1. Decodificar Base64 a Matriz NumPy
+            if not isinstance(base64_image, str) or not base64_image:
+                raise HTTPException(status_code=400, detail={"error": "IMAGE_REQUIRED"})
+
             if "," in base64_image:
-                encoded_data = base64_image.split(',')[1]
+                header, encoded_data = base64_image.split(",", 1)
+                if not header.lower().startswith("data:image/"):
+                    raise HTTPException(status_code=415, detail={"error": "UNSUPPORTED_IMAGE_TYPE"})
             else:
                 encoded_data = base64_image
-                
-            file_bytes = np.frombuffer(base64.b64decode(encoded_data), dtype=np.uint8)
+
+            if len(encoded_data) > ((LightweightLiveness.MAX_DECODED_BYTES * 4 // 3) + 4):
+                raise HTTPException(status_code=413, detail={"error": "IMAGE_TOO_LARGE"})
+            try:
+                decoded = base64.b64decode(encoded_data, validate=True)
+            except (ValueError, binascii.Error) as err:
+                raise HTTPException(status_code=400, detail={"error": "INVALID_IMAGE_ENCODING"}) from err
+            if len(decoded) > LightweightLiveness.MAX_DECODED_BYTES:
+                raise HTTPException(status_code=413, detail={"error": "IMAGE_TOO_LARGE"})
+
+            file_bytes = np.frombuffer(decoded, dtype=np.uint8)
             image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
 
             if image is None:
@@ -32,6 +53,11 @@ class LightweightLiveness:
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                     detail="Resolución insuficiente. Acerque el rostro a la cámara."
+                )
+            if h > LightweightLiveness.MAX_DIMENSION or w > LightweightLiveness.MAX_DIMENSION or h * w > LightweightLiveness.MAX_PIXELS:
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail={"error": "IMAGE_DIMENSIONS_TOO_LARGE", "message": "La resolución máxima permitida es 4096x4096."},
                 )
 
             # 3. Detección de Desenfoque (Laplacian Variance)
@@ -61,3 +87,47 @@ class LightweightLiveness:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Error en validación biológica de imagen: {str(err)}"
             )
+
+    @staticmethod
+    def verify_sequence(images: list[str]) -> tuple[np.ndarray, dict[str, float]]:
+        """Validate a short camera sequence, including motion and texture checks.
+
+        This is a defense-in-depth heuristic. A trained anti-spoofing model is
+        still required for high-assurance biometric authentication.
+        """
+        if len(images) != 3:
+            raise HTTPException(
+                status_code=422,
+                detail={"error": "LIVENESS_SEQUENCE_REQUIRED", "message": "Se requieren tres capturas consecutivas."},
+            )
+
+        frames = [LightweightLiveness.verify_quality_and_liveness(image) for image in images]
+        gray_frames = [cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) for frame in frames]
+        motion_scores = []
+        for previous, current in zip(gray_frames, gray_frames[1:]):
+            previous_small = cv2.resize(previous, (160, 120))
+            current_small = cv2.resize(current, (160, 120))
+            difference = cv2.absdiff(previous_small, current_small)
+            motion_scores.append(float(np.mean(difference) / 255.0))
+
+        if max(motion_scores) < LightweightLiveness.MIN_MOTION_SCORE:
+            raise HTTPException(
+                status_code=422,
+                detail={"error": "LIVENESS_MOTION_REQUIRED", "message": "Mueva ligeramente la cabeza durante la captura."},
+            )
+
+        texture_scores = []
+        for gray in gray_frames:
+            edges = cv2.Canny(gray, 80, 160)
+            texture_scores.append(float(np.count_nonzero(edges) / edges.size))
+        if min(texture_scores) < LightweightLiveness.MIN_TEXTURE_SCORE:
+            raise HTTPException(
+                status_code=422,
+                detail={"error": "POSSIBLE_REPLAY", "message": "La textura de la captura no parece provenir de una cámara activa."},
+            )
+
+        return frames[1], {
+            "motion_score": round(max(motion_scores), 5),
+            "texture_score": round(min(texture_scores), 5),
+            "frame_count": float(len(frames)),
+        }

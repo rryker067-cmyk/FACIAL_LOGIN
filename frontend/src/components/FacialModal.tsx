@@ -117,6 +117,22 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
     return canvas.toDataURL('image/jpeg', 0.92);
   };
 
+  const captureLivenessSequence = async (): Promise<string[]> => {
+    const captures: string[] = [];
+    for (let index = 0; index < 3; index += 1) {
+      setMessage(
+        index === 0
+          ? 'Mire al frente y mantenga el rostro visible.'
+          : index === 1
+            ? 'Mueva lentamente la cabeza hacia un lado.'
+            : 'Regrese al centro y mantenga la mirada en la cámara.',
+      );
+      await new Promise((resolve) => window.setTimeout(resolve, 700));
+      captures.push(captureSnapshot());
+    }
+    return captures;
+  };
+
   const runLoginScan = () => {
     if (!cameraActive) {
       setStatus('error');
@@ -131,10 +147,11 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
     window.setTimeout(async () => {
       try {
         setScanning(false);
-        const snapshotUrl = captureSnapshot();
+        const sequence = await captureLivenessSequence();
+        const snapshotUrl = sequence[1];
         setCapturedImage(snapshotUrl);
 
-        const result = await loginWithFace(snapshotUrl);
+        const result = await loginWithFace(sequence);
         const matchedName = result.nombre || 'Usuario identificado';
         const parsedMatch = Number.parseFloat(result.match_percentage) || 0;
         if (parsedMatch < 75) {
@@ -222,7 +239,7 @@ export default function FacialModal({ onClose, onSuccess }: FacialModalProps) {
 
     try {
       try {
-        const existingMatch = await loginWithFace(imageToSave);
+        const existingMatch = await loginWithFace(registrationImages);
         const existingSimilarity = Number.parseFloat(existingMatch.match_percentage) || 0;
         if (existingSimilarity >= 75) {
           setDuplicateNotice(true);

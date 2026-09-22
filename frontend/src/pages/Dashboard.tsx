@@ -383,30 +383,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     setIsSaved(false)
   }
 
-  const handleFile = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => {
-      if (typeof reader.result !== 'string') {
-        setRecognitionError('No se pudo leer la imagen seleccionada.')
-        return
-      }
-      setPreview(reader.result)
-      setForm(emptyPerson)
-      setFaceMatch(0)
-      setRegistrationConfidence(0)
-      setRecognitionError(null)
-      setRecognitionNotice(null)
-      setIsSaved(false)
-      void recognizeFaceFromImage(reader.result)
-    }
-    reader.onerror = () => {
-      setRecognitionError('No se pudo leer la imagen seleccionada.')
-    }
-    reader.readAsDataURL(file)
-  }
-
+  // La identificación se inicia únicamente con la cámara del dispositivo.
   const openCamera = async () => {
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
@@ -457,9 +434,11 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     const image = canvas.toDataURL('image/jpeg', 0.9)
     setPreview(image)
     closeCamera()
+    // El backend compara el embedding de esta captura contra los embeddings de Supabase.
     void recognizeFaceFromImage(image)
   }
 
+  // Envía la captura de cámara al análisis facial configurado en FastAPI.
   const recognizeFaceFromImage = async (image = preview) => {
     if (!image) return
     setIsRecognizing(true)
@@ -473,6 +452,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
         edad: result.edad,
         dni: result.dni,
         telefono: result.telefono,
+        estado: result.nombre ? 'Reconocido' : 'No reconocido',
         email: result.email || '',
         imagen_url: result.imagen_url || '',
         similarity: result.similarity || '0',
@@ -481,6 +461,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
       const match = Math.min(100, Math.max(0, Number.parseFloat(result.similarity || '0') * 100))
       const isAcceptedMatch = Boolean(result.nombre) && match >= 75
       setRecognitionNotice(isAcceptedMatch ? null : 'No se encontró al usuario en la base de datos.')
+      setForm((current) => ({ ...current, estado: isAcceptedMatch ? 'Reconocido' : 'No reconocido' }))
       if (isAcceptedMatch && result.imagen_url) setPreview(result.imagen_url)
       setFaceMatch(isAcceptedMatch ? match : 0)
       setRegistrationConfidence(isAcceptedMatch ? Math.round(match) : 0)
@@ -750,7 +731,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                     </div>
                   </>
                 ) : preview ? (
-                  <><img src={preview} alt="Vista previa del rostro seleccionado" onError={() => { setPreview(null); setRecognitionError('La vista previa no está disponible. Captura o selecciona otra imagen.') }} /><div className="image-overlay"><span><Check size={14} /> Imagen lista</span><button onClick={() => setPreview(null)} aria-label="Quitar imagen"><X size={15} /></button></div></>
+                  <><img src={preview} alt="Captura tomada desde la cámara" onError={() => { setPreview(null); setRecognitionError('La captura de cámara no está disponible. Toma otra captura.') }} /><div className="image-overlay"><span><Check size={14} /> Captura lista</span><button onClick={() => setPreview(null)} aria-label="Quitar captura"><X size={15} /></button></div></>
                 ) : (
                   <><div className="scan-corner scan-corner--tl" /><div className="scan-corner scan-corner--tr" /><div className="scan-corner scan-corner--bl" /><div className="scan-corner scan-corner--br" /><div className="capture-placeholder"><div className="face-icon"><ScanFace size={43} strokeWidth={1.4} /></div><b>Aún no hay una imagen</b><span>Sube una foto clara o usa tu cámara</span></div><div className="capture-grid" /></>
                 )}
@@ -767,14 +748,15 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                   <small>{registrationConfidence >= 90 ? 'Detalle suficiente para reconocer el rostro' : 'Analizando calidad e iluminación'}</small>
                 </div>
               </div>
-              <div className="capture-actions"><label className="button button--dark"><Upload size={16} /> Subir imagen<input type="file" accept="image/*" onChange={handleFile} /></label><button className="button button--outline" onClick={openCamera}><Camera size={16} /> Usar cámara</button></div>
+              <div className="capture-actions"><button className="button button--primary" onClick={openCamera}><Camera size={16} /> Activar cámara</button><span className="capture-note">El reconocimiento solo acepta capturas realizadas desde la cámara.</span></div>
+              <div className="recognition-method-note"><strong>Análisis activo:</strong> embedding facial 512D con preprocesamiento RGB 112 × 112. <strong>Comparación:</strong> similitud coseno mediante <code>match_face_1n</code> en Supabase, con umbral de aceptación del 75%.</div>
               <div className="capture-note"><ShieldCheck size={15} /><span>La imagen se procesa de forma segura y solo se conserva con tu confirmación.</span></div>
             </div>
 
             <div className="panel details-panel"><div className="panel-heading"><div><span className="section-kicker">PASO 02</span><h2>Datos personales</h2></div><span className="match-badge"><span /> Coincidencia lista</span></div>
               <button className="recognize-button" onClick={() => void recognizeFaceFromImage()} disabled={!preview || isRecognizing}>{isRecognizing ? <><span className="spinner" /> Analizando rostro...</> : <><ScanFace size={18} /> Reconocer y completar datos</>}</button>
               {recognitionError && <p className="recognition-error" role="alert">{recognitionError}</p>}
-              <form onSubmit={saveRecord}><div className="form-grid"><Field label="Nombre" value={form.nombre} onChange={(value) => updateField('nombre', value)} placeholder="Ej. Valentina" /><Field label="Apellido" value={form.apellido} onChange={(value) => updateField('apellido', value)} placeholder="Ej. Rojas" /><Field label="Edad" value={form.edad} onChange={(value) => updateField('edad', value)} placeholder="Años" type="number" /><Field label="DNI" value={form.dni} onChange={(value) => updateField('dni', value)} placeholder="8 dígitos" /><Field wide label="Correo electrónico" value={form.email || ''} onChange={(value) => updateField('email', value)} placeholder="correo@empresa.com" /><Field wide label="Número de teléfono" value={form.telefono} onChange={(value) => updateField('telefono', value)} placeholder="+51 000 000 000" /></div><div className="form-footer"><span className="required-note">* Campos requeridos</span><button type="submit" className="button button--primary" disabled={!form.nombre || !form.apellido || !form.dni}>{isSaved ? <><Check size={16} /> Guardado</> : <><Database size={16} /> Guardar registro</>}</button></div></form>
+              <form onSubmit={saveRecord}><div className="form-grid"><Field label="Nombre" value={form.nombre} onChange={(value) => updateField('nombre', value)} placeholder="Ej. Valentina" /><Field label="Estado" value={form.estado || 'Pendiente'} onChange={() => undefined} placeholder="Pendiente" /><Field label="Edad" value={form.edad} onChange={(value) => updateField('edad', value)} placeholder="Años" type="number" /><Field label="DNI" value={form.dni} onChange={(value) => updateField('dni', value)} placeholder="8 dígitos" /><Field wide label="Correo electrónico" value={form.email || ''} onChange={(value) => updateField('email', value)} placeholder="correo@empresa.com" /><Field wide label="Número de teléfono" value={form.telefono} onChange={(value) => updateField('telefono', value)} placeholder="+51 000 000 000" /></div><div className="form-footer"><span className="required-note">* Campos requeridos</span><button type="submit" className="button button--primary" disabled={!form.nombre || !form.dni}>{isSaved ? <><Check size={16} /> Guardado</> : <><Database size={16} /> Guardar registro</>}</button></div></form>
             </div>
           </section>
 

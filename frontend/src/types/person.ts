@@ -4,6 +4,7 @@ export type PersonRecord = {
   edad: string
   dni: string
   telefono: string
+  estado?: string
   email?: string
   imagen_url?: string
   imagenes_urls?: string[]

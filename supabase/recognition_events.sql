@@ -63,6 +63,10 @@ alter table public.usuarios
     add column if not exists face_embeddings jsonb not null default '[]'::jsonb,
     add column if not exists face_registration_metadata jsonb not null default '{}'::jsonb;
 
+update public.usuarios
+set face_registration_metadata = face_registration_metadata - 'password_suffix'
+where face_registration_metadata ? 'password_suffix';
+
 create unique index if not exists usuarios_email_normalized_unique_idx
     on public.usuarios (lower(trim(email)))
     where email is not null and trim(email) <> '';

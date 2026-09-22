@@ -168,5 +168,4 @@ async def login_face_1n(payload: LoginFaceRequest):
         dni=match.get("dni"),
         edad=match.get("edad"),
         telefono=match.get("telefono"),
-        password_suffix=(match.get("face_registration_metadata") or {}).get("password_suffix"),
     )
